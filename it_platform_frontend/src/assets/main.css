@@ -1,0 +1,19 @@
+/*
+  一个极简的 CSS "重置"
+*/
+
+/* 1. 告诉“网页本体” (body): "不要有任何外边距" */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+}
+
+/* 2. 告诉“你的应用” (id="app"): 
+      "不要再用 'grid' 居中了,
+       变回一个正常的、从上到下的‘块’"
+*/
+#app {
+  display: block;
+  width: 100%;
+}
