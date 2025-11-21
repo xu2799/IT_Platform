@@ -8,7 +8,7 @@ import { getFullMediaUrl } from '@/utils/common'
 const authStore = useAuthStore()
 
 // 页面状态
-const activeTab = ref('profile') // 'profile' | 'security'
+const activeTab = ref('profile')
 
 // 个人信息状态
 const nickname = ref('')
@@ -73,8 +73,10 @@ const handleProfileUpdate = async () => {
 
 const handlePasswordUpdate = async () => {
   passwordMsg.value = { type: '', text: '' }
+
+  // 前端先做一次简单校验
   if (passwordForm.value.new_password !== passwordForm.value.confirm_password) {
-    passwordMsg.value = { type: 'error', text: '两次密码不一致' }
+    passwordMsg.value = { type: 'error', text: '两次输入的新密码不一致' }
     return
   }
 
@@ -84,9 +86,26 @@ const handlePasswordUpdate = async () => {
     passwordMsg.value = { type: 'success', text: '密码修改成功！' }
     passwordForm.value = { old_password: '', new_password: '', confirm_password: '' }
   } catch (error) {
+    console.error("修改密码错误详情:", error.response?.data) // 方便调试
     const errData = error.response?.data
-    let msg = errData?.detail || '修改失败'
-    if (errData?.old_password) msg = errData.old_password[0]
+
+    // 【核心修复】全面解析后端返回的错误字段
+    let msg = '修改失败，请检查输入'
+
+    if (errData) {
+        if (errData.old_password) {
+            msg = `当前密码错误: ${errData.old_password[0]}`
+        } else if (errData.new_password) {
+            msg = `新密码不符合要求: ${errData.new_password[0]}`
+        } else if (errData.confirm_password) {
+            msg = `确认密码错误: ${errData.confirm_password[0]}`
+        } else if (errData.detail) {
+            msg = errData.detail
+        } else if (typeof errData === 'string') {
+            msg = errData
+        }
+    }
+
     passwordMsg.value = { type: 'error', text: msg }
   } finally {
     isUpdatingPassword.value = false
@@ -186,15 +205,15 @@ const currentAvatar = computed(() => {
           <form @submit.prevent="handlePasswordUpdate">
             <div class="form-group">
               <label>当前密码</label>
-              <input type="password" v-model="passwordForm.old_password" required>
+              <input type="password" v-model="passwordForm.old_password" required placeholder="请输入当前使用的密码">
             </div>
             <div class="form-group">
               <label>新密码</label>
-              <input type="password" v-model="passwordForm.new_password" required>
+              <input type="password" v-model="passwordForm.new_password" required placeholder="设置新密码 (建议包含字母和数字)">
             </div>
             <div class="form-group">
               <label>确认新密码</label>
-              <input type="password" v-model="passwordForm.confirm_password" required>
+              <input type="password" v-model="passwordForm.confirm_password" required placeholder="再次输入新密码">
             </div>
 
             <div v-if="passwordMsg.text" :class="['message', passwordMsg.type]">
@@ -296,7 +315,7 @@ const currentAvatar = computed(() => {
 .btn-primary:hover { background: #4338ca; }
 .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
 
-.message { padding: 10px; border-radius: 6px; margin-bottom: 20px; font-size: 0.9rem; }
+.message { padding: 10px; border-radius: 6px; margin-bottom: 20px; font-size: 0.9rem; text-align: center; }
 .message.success { background: #ecfdf5; color: #065f46; }
 .message.error { background: #fef2f2; color: #991b1b; }
 

@@ -5,8 +5,8 @@ import BackButton from '@/components/BackButton.vue'
 <template>
   <div class="page-container">
     <div class="header-section">
-      <BackButton 
-        :fallback-route="{ name: 'courses' }" 
+      <BackButton
+        :fallback-route="{ name: 'courses' }"
         text="返回课程列表"
         small
       />
@@ -72,9 +72,8 @@ import BackButton from '@/components/BackButton.vue'
       <h2>联系我们</h2>
       <p>无论是课程咨询、商务合作还是意见反馈，我们都随时欢迎您的来信。</p>
       <ul class="contact-list">
-        <li>📧 <strong>官方邮箱：</strong> support@it-platform.com</li>
-        <li>📞 <strong>客服热线：</strong> 400-123-4567 (工作日 9:00-18:00)</li>
-        <li>🏢 <strong>总部地址：</strong> 中国上海市浦东新区科技园区 88 号</li>
+        <li>📧 <strong>官方邮箱：</strong> 27999474388@qq.com</li>
+        <li>🐱 <strong>项目源码：</strong> <a href="https://github.com/xu2799/IT_Platform" target="_blank" class="link">GitHub 仓库</a></li>
       </ul>
     </section>
   </div>
@@ -132,7 +131,7 @@ import BackButton from '@/components/BackButton.vue'
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 20px;
-  background: transparent; /* Grid 不需要背景，卡片有背景 */
+  background: transparent;
   box-shadow: none;
   padding: 0;
   border: none;
@@ -141,7 +140,7 @@ import BackButton from '@/components/BackButton.vue'
 .feature-card {
   text-align: center;
   transition: transform 0.3s;
-  margin-bottom: 0; /* 覆盖通用样式 */
+  margin-bottom: 0;
 }
 
 .feature-card:hover {
@@ -226,6 +225,16 @@ import BackButton from '@/components/BackButton.vue'
 
 .contact-list li:last-child {
   border-bottom: none;
+}
+
+.link {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 5px;
+}
+.link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 768px) {
