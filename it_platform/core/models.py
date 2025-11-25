@@ -22,8 +22,6 @@ class CustomUser(AbstractUser):
         default=ROLE_STUDENT
     )
     bio = models.TextField(verbose_name="个人简介", blank=True)
-
-    # 新增字段
     nickname = models.CharField(verbose_name="昵称", max_length=30, blank=True)
     avatar = models.ImageField(verbose_name="头像", upload_to='avatars/', null=True, blank=True)
 
@@ -38,20 +36,16 @@ class CustomUser(AbstractUser):
         return self.nickname if self.nickname else self.username
 
 
-# --- 2. 课程分类 (这里增加了 order 字段) ---
+# --- 2. 课程分类 ---
 class Category(models.Model):
     name = models.CharField(verbose_name="分类名称", max_length=100, unique=True)
     slug = models.SlugField(
         max_length=100, unique=True, blank=True, allow_unicode=True,
         help_text="用于URL的短标签"
     )
-    # 【新增】权重字段，默认 0，数值越大越靠前
-    order = models.IntegerField(verbose_name="热门权重", default=0, help_text="数值越大，排序越靠前")
 
     class Meta:
         verbose_name_plural = "Categories"
-        # 默认按权重降序排列
-        ordering = ['-order']
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -274,3 +268,27 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"{self.user.username} 评论 {self.lesson.title}"
+
+
+# --- 10. 学习笔记 (新增) ---
+class Note(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='notes', verbose_name="用户"
+    )
+    lesson = models.ForeignKey(
+        Lesson, on_delete=models.CASCADE,
+        related_name='notes', verbose_name="所属课时"
+    )
+    content = models.TextField(verbose_name="笔记内容")
+    video_timestamp = models.FloatField(verbose_name="视频时间戳(秒)", default=0.0)
+    created_at = models.DateTimeField(verbose_name="创建时间", auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'lesson']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} 的笔记 - {self.lesson.title}"

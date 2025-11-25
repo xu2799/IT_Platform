@@ -8,15 +8,17 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Count, F
 from .models import (
     Course, CustomUser, Module, Lesson, Enrollment,
-    Category, InstructorApplication, Comment
+    Category, InstructorApplication, Comment, Note  # 导入 Note
 )
 from .serializers import (
     CourseDetailSerializer, CourseListSerializer, UserSerializer,
     ModuleSerializer, LessonSerializer, CategorySerializer,
     InstructorApplicationSerializer, CommentSerializer,
-    ChangePasswordSerializer
+    ChangePasswordSerializer, NoteSerializer  # 导入 NoteSerializer
 )
 from .tasks import process_video_upload
+import time
+import random
 
 
 # --- 权限控制 ---
@@ -330,3 +332,46 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAdminUser]  # 只有超级管理员能访问
     filter_backends = [filters.SearchFilter]
     search_fields = ['username', 'email', 'nickname']
+
+
+# --- 13. 笔记视图 (新增) ---
+class NoteViewSet(viewsets.ModelViewSet):
+    serializer_class = NoteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # 只获取当前用户的笔记
+        queryset = Note.objects.filter(user=self.request.user).order_by('-created_at')
+        lesson_id = self.request.query_params.get('lesson_id')
+        if lesson_id:
+            queryset = queryset.filter(lesson_id=lesson_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+# --- 14. AI 助教接口 (新增) ---
+class AskAIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        question = request.data.get('question')
+        # lesson_id = request.data.get('lesson_id') # 可用于获取上下文
+
+        if not question:
+            return Response({"detail": "问题不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 【演示场景】：模拟 AI 回复
+        time.sleep(1)  # 模拟思考延迟
+        mock_answers = [
+            "这是一个非常棒的问题！在编程中，这个概念通常用于解耦代码逻辑。",
+            "根据本节课的内容，建议你关注视频第 5 分钟处的讲解，那里详细解释了原理。",
+            "你可以尝试使用 Python 的装饰器来实现这个功能，代码会更优雅。",
+            "这个错误通常是因为变量作用域导致的，请检查你的变量定义位置。",
+            "加油！你的理解已经很接近了，试着动手写一段代码验证一下。"
+        ]
+
+        ai_answer = f"【AI 助教】: {random.choice(mock_answers)} (这是模拟回复，请对接真实 LLM API)"
+
+        return Response({"answer": ai_answer})

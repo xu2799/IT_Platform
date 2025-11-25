@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     CustomUser, Course, Module, Lesson, Category,
-    InstructorApplication, Comment
+    InstructorApplication, Comment, Note  # 【新增】导入 Note
 )
 
 
@@ -12,6 +12,7 @@ class UserSerializer(serializers.ModelSerializer):
     favorited_courses = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     # 【修复】: 允许头像字段写入 (移除 read_only=True，改为 required=False)
+    # 这样前端上传的头像才能被保存
     avatar = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
@@ -20,6 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'nickname', 'email', 'avatar', 'bio', 'role',
             'enrollments', 'favorited_courses'
         ]
+        # 注意：avatar 不在这里的 read_only_fields 中
         read_only_fields = ['role', 'username', 'enrollments', 'favorited_courses']
 
     def validate_bio(self, value):
@@ -203,3 +205,11 @@ class CommentSerializer(serializers.ModelSerializer):
             if not reply_to_user:
                 data['reply_to_user'] = parent.user
         return data
+
+
+# --- 10. 笔记序列化 (【新增】功能支持) ---
+class NoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Note
+        fields = ['id', 'user', 'lesson', 'content', 'video_timestamp', 'created_at']
+        read_only_fields = ['user', 'created_at']

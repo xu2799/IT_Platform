@@ -1,4 +1,3 @@
-# core/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
@@ -14,6 +13,8 @@ router.register(r'comments', views.CommentViewSet, basename='comment')
 
 # 【新增】管理员用户管理接口
 router.register(r'admin/users', views.UserManagementViewSet, basename='admin-users')
+# 【新增】笔记接口
+router.register(r'notes', views.NoteViewSet, basename='note')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -29,4 +30,7 @@ urlpatterns = [
     path('favorites/', views.FavoriteCourseListView.as_view(), name='course-favorite-list'),
 
     path('register/', RegisterView.as_view(), name='register'),
+
+    # 【新增】AI 接口
+    path('ai/ask/', views.AskAIView.as_view(), name='ask-ai'),
 ]
