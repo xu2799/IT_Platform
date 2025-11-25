@@ -10,27 +10,26 @@ router.register(r'lessons', views.LessonViewSet, basename='lesson')
 router.register(r'categories', views.CategoryViewSet, basename='category')
 router.register(r'applications', views.InstructorApplicationViewSet, basename='application')
 router.register(r'comments', views.CommentViewSet, basename='comment')
-
-# 【新增】管理员用户管理接口
 router.register(r'admin/users', views.UserManagementViewSet, basename='admin-users')
-# 【新增】笔记接口
 router.register(r'notes', views.NoteViewSet, basename='note')
+# 【新增】作业路由
+router.register(r'assignments', views.AssignmentViewSet, basename='assignment')
+router.register(r'submissions', views.SubmissionViewSet, basename='submission')
 
 urlpatterns = [
     path('', include(router.urls)),
 
-    # 用户相关
     path('users/me/', views.UserView.as_view(), name='user-me'),
     path('users/change-password/', ChangePasswordView.as_view(), name='change-password'),
 
     path('instructor/courses/', views.InstructorCourseListView.as_view(), name='instructor-courses'),
+    # 【新增】讲师面板扩展接口
+    path('instructor/analytics/', views.InstructorAnalyticsView.as_view(), name='instructor-analytics'),
+    path('instructor/qa/', views.InstructorQAView.as_view(), name='instructor-qa'),
 
     path('courses/<int:course_id>/like/', views.ToggleLikeView.as_view(), name='course-like-toggle'),
     path('courses/<int:course_id>/favorite/', views.ToggleFavoriteView.as_view(), name='course-favorite-toggle'),
     path('favorites/', views.FavoriteCourseListView.as_view(), name='course-favorite-list'),
 
     path('register/', RegisterView.as_view(), name='register'),
-
-    # 【新增】AI 接口
-    path('ai/ask/', views.AskAIView.as_view(), name='ask-ai'),
 ]

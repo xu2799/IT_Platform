@@ -105,7 +105,7 @@ const handleImageError = (e) => {
 </template>
 
 <style scoped>
-/* 通用样式，保证风格统一 */
+/* 通用样式 */
 .toolbar { display: flex; justify-content: space-between; margin-bottom: 20px; }
 .search-box input { padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 6px; width: 300px; }
 .btn-add { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }

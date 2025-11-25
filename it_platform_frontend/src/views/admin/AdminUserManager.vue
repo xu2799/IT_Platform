@@ -37,8 +37,10 @@ onMounted(fetchUsers)
 <template>
   <div class="manager-view">
     <div class="toolbar">
-      <input v-model="searchQuery" @keyup.enter="fetchUsers" placeholder="搜索用户名/邮箱..." class="search-input" />
-      <button @click="fetchUsers" class="btn-primary">搜索</button>
+      <div class="search-wrapper">
+        <input v-model="searchQuery" @keyup.enter="fetchUsers" placeholder="搜索用户名/邮箱..." class="search-input" />
+        <button @click="fetchUsers" class="btn-primary">搜索</button>
+      </div>
     </div>
 
     <div class="table-container">
@@ -88,7 +90,8 @@ onMounted(fetchUsers)
 
 <style scoped>
 .manager-view { padding: 0; }
-.toolbar { display: flex; gap: 10px; margin-bottom: 20px; }
+.toolbar { display: flex; margin-bottom: 20px; }
+.search-wrapper { display: flex; gap: 10px; }
 .search-input { padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 6px; width: 300px; }
 .btn-primary { background: #4f46e5; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .btn-primary:hover { background: #4338ca; }

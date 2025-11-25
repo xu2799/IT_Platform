@@ -79,7 +79,7 @@ const isActive = (path) => route.path.includes(path)
 /* 侧边栏 */
 .admin-sidebar {
   width: 240px;
-  background: #1e293b; /* 深蓝灰色，更接近截图风格 */
+  background: #1e293b; /* 深蓝灰色 */
   color: #f1f5f9;
   display: flex;
   flex-direction: column;
@@ -125,7 +125,7 @@ const isActive = (path) => route.path.includes(path)
   color: white;
 }
 
-/* 激活状态 - 模仿截图中的紫色高亮 */
+/* 激活状态 */
 .nav-item.active {
   background: #4f46e5; /* Indigo-600 */
   color: white;

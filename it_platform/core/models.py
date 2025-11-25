@@ -270,7 +270,7 @@ class Comment(models.Model):
         return f"{self.user.username} 评论 {self.lesson.title}"
 
 
-# --- 10. 学习笔记 (新增) ---
+# --- 10. 学习笔记 ---
 class Note(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -292,3 +292,51 @@ class Note(models.Model):
 
     def __str__(self):
         return f"{self.user.username} 的笔记 - {self.lesson.title}"
+
+
+# --- 11. 作业系统 (新增) ---
+class Assignment(models.Model):
+    course = models.ForeignKey(
+        Course, on_delete=models.CASCADE,
+        related_name='assignments', verbose_name="所属课程"
+    )
+    title = models.CharField(verbose_name="作业标题", max_length=255)
+    description = models.TextField(verbose_name="作业要求")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+class Submission(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_PASSED = 'passed'
+    STATUS_REJECTED = 'rejected'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, '待批改'),
+        (STATUS_PASSED, '已通过'),
+        (STATUS_REJECTED, '需修改'),
+    ]
+
+    assignment = models.ForeignKey(
+        Assignment, on_delete=models.CASCADE,
+        related_name='submissions', verbose_name="所属作业"
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='submissions', verbose_name="提交学生"
+    )
+    content = models.TextField(verbose_name="作业内容(代码或链接)")
+    status = models.CharField(
+        verbose_name="状态", max_length=10,
+        choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
+    feedback = models.TextField(verbose_name="讲师评语", blank=True)
+    grade = models.PositiveIntegerField(verbose_name="评分", null=True, blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-submitted_at']
+        unique_together = ('assignment', 'student')
+
+    def __str__(self):
+        return f"{self.student.username} 提交 {self.assignment.title}"

@@ -5,20 +5,18 @@ from rest_framework.permissions import IsAuthenticated, BasePermission, IsAdminU
 from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
-from django.db.models import Count, F
+from django.db.models import Count, Sum, F
 from .models import (
     Course, CustomUser, Module, Lesson, Enrollment,
-    Category, InstructorApplication, Comment, Note  # 导入 Note
+    Category, InstructorApplication, Comment, Note, Assignment, Submission
 )
 from .serializers import (
     CourseDetailSerializer, CourseListSerializer, UserSerializer,
     ModuleSerializer, LessonSerializer, CategorySerializer,
     InstructorApplicationSerializer, CommentSerializer,
-    ChangePasswordSerializer, NoteSerializer  # 导入 NoteSerializer
+    ChangePasswordSerializer, NoteSerializer, AssignmentSerializer, SubmissionSerializer
 )
 from .tasks import process_video_upload
-import time
-import random
 
 
 # --- 权限控制 ---
@@ -185,7 +183,7 @@ class InstructorCourseListView(ListAPIView):
         return Course.objects.filter(instructor=user).order_by('-created_at')
 
 
-# --- 7. 用户个人信息视图 (支持头像上传) ---
+# --- 7. 用户个人信息视图 ---
 class UserView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -213,7 +211,7 @@ class ChangePasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# --- 9. 评论视图 (【修改】：增强逻辑支持管理员管理所有评论) ---
+# --- 9. 评论视图 ---
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -222,11 +220,9 @@ class CommentViewSet(viewsets.ModelViewSet):
     search_fields = ['content', 'user__username', 'lesson__title']
 
     def get_queryset(self):
-        # 如果是管理员，返回所有评论，方便管理
         if self.request.user.is_staff:
             return Comment.objects.all().select_related('user', 'lesson').order_by('-created_at')
 
-        # 普通用户的逻辑：只展示顶层评论，子评论通过 replies 字段获取
         queryset = Comment.objects.select_related(
             'user', 'reply_to_user'
         ).prefetch_related(
@@ -325,22 +321,21 @@ class RegisterView(APIView):
             return Response({'detail': '注册失败'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# --- 12. 【新增】用户管理视图 (仅管理员) ---
+# --- 12. 用户管理视图 (管理员) ---
 class UserManagementViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]  # 只有超级管理员能访问
+    permission_classes = [permissions.IsAdminUser]
     filter_backends = [filters.SearchFilter]
     search_fields = ['username', 'email', 'nickname']
 
 
-# --- 13. 笔记视图 (新增) ---
+# --- 13. 笔记视图 ---
 class NoteViewSet(viewsets.ModelViewSet):
     serializer_class = NoteSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # 只获取当前用户的笔记
         queryset = Note.objects.filter(user=self.request.user).order_by('-created_at')
         lesson_id = self.request.query_params.get('lesson_id')
         if lesson_id:
@@ -351,27 +346,64 @@ class NoteViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
-# --- 14. AI 助教接口 (新增) ---
-class AskAIView(APIView):
+# --- 14. 作业管理视图 (新增) ---
+class AssignmentViewSet(viewsets.ModelViewSet):
+    serializer_class = AssignmentSerializer
+    permission_classes = [IsInstructorOrAdmin]
+
+    def get_queryset(self):
+        return Assignment.objects.filter(course__instructor=self.request.user).annotate(
+            submission_count=Count('submissions')
+        ).order_by('-created_at')
+
+
+class SubmissionViewSet(viewsets.ModelViewSet):
+    serializer_class = SubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request):
-        question = request.data.get('question')
-        # lesson_id = request.data.get('lesson_id') # 可用于获取上下文
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in [CustomUser.ROLE_INSTRUCTOR, CustomUser.ROLE_ADMIN]:
+            return Submission.objects.filter(assignment__course__instructor=user).order_by('-submitted_at')
+        return Submission.objects.filter(student=user).order_by('-submitted_at')
 
-        if not question:
-            return Response({"detail": "问题不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+    def perform_create(self, serializer):
+        serializer.save(student=self.request.user)
 
-        # 【演示场景】：模拟 AI 回复
-        time.sleep(1)  # 模拟思考延迟
-        mock_answers = [
-            "这是一个非常棒的问题！在编程中，这个概念通常用于解耦代码逻辑。",
-            "根据本节课的内容，建议你关注视频第 5 分钟处的讲解，那里详细解释了原理。",
-            "你可以尝试使用 Python 的装饰器来实现这个功能，代码会更优雅。",
-            "这个错误通常是因为变量作用域导致的，请检查你的变量定义位置。",
-            "加油！你的理解已经很接近了，试着动手写一段代码验证一下。"
-        ]
 
-        ai_answer = f"【AI 助教】: {random.choice(mock_answers)} (这是模拟回复，请对接真实 LLM API)"
+# --- 15. 讲师数据看板接口 (新增) ---
+class InstructorAnalyticsView(APIView):
+    permission_classes = [IsInstructorOrAdmin]
 
-        return Response({"answer": ai_answer})
+    def get(self, request):
+        user = request.user
+        courses = Course.objects.filter(instructor=user)
+
+        total_students = Enrollment.objects.filter(course__in=courses).values('student').distinct().count()
+        total_views = courses.aggregate(Sum('view_count'))['view_count__sum'] or 0
+        total_likes_real = 0
+        for c in courses:
+            total_likes_real += c.likes.count()
+
+        course_performance = courses.annotate(
+            likes_num=Count('likes'),
+            students_num=Count('enrollments')
+        ).values('title', 'view_count', 'likes_num', 'students_num').order_by('-view_count')[:5]
+
+        return Response({
+            "total_students": total_students,
+            "total_views": total_views,
+            "total_likes": total_likes_real,
+            "course_data": list(course_performance)
+        })
+
+
+# --- 16. 答疑控制台接口 (新增) ---
+class InstructorQAView(ListAPIView):
+    serializer_class = CommentSerializer
+    permission_classes = [IsInstructorOrAdmin]
+
+    def get_queryset(self):
+        return Comment.objects.filter(
+            lesson__module__course__instructor=self.request.user
+        ).exclude(user=self.request.user).order_by('-created_at')

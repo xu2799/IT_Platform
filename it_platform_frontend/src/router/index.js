@@ -114,14 +114,14 @@ const router = createRouter({
           meta: { title: '仪表盘' }
         },
         {
-          // 这里的 component 必须是 AdminCourseManager
+          // 【重要】: 这里的 component 必须是 AdminCourseManager
           path: 'courses',
           name: 'admin-courses',
           component: AdminCourseManager,
           meta: { title: '课程管理' }
         },
         {
-          // 这里的 component 必须是 AdminUserManager
+          // 【重要】: 这里的 component 必须是 AdminUserManager
           path: 'users',
           name: 'admin-users',
           component: AdminUserManager,

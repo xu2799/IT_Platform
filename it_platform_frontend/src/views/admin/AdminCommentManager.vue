@@ -53,7 +53,7 @@ onMounted(fetchComments)
             </td>
             <td class="source-text">
                课程ID: {{ comment.lesson }}
-               </td>
+            </td>
             <td>
               <button @click="handleDelete(comment.id)" class="btn-sm danger">删除</button>
             </td>
