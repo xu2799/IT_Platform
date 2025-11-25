@@ -5,6 +5,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 /**
  * 通用：获取完整的媒体资源 URL
  * 兼容处理头像、封面图、视频等
+ * @param {string} relativePath - 后端返回的相对路径
+ * @returns {string} 完整的 URL
  */
 export const getFullMediaUrl = (relativePath) => {
   if (!relativePath) return ''
@@ -20,9 +22,15 @@ export const getFullMediaUrl = (relativePath) => {
   return `${cleanBase}${cleanPath}`
 }
 
-// 【关键修复】导出 getFullCoverImagePath 作为别名
-// 这样无论组件里写的是 getFullMediaUrl 还是 getFullCoverImagePath 都能用
+// 导出别名，方便语义化使用
 export const getFullCoverImagePath = getFullMediaUrl
+
+/**
+ * 图片加载失败回退
+ */
+export const handleImageError = (event) => {
+  event.target.src = 'https://via.placeholder.com/300x150.png?text=No+Image'
+}
 
 /**
  * 格式化日期 (YYYY-MM-DD)
@@ -37,8 +45,14 @@ export const formatDate = (dateString) => {
 }
 
 /**
- * 图片加载失败回退
+ * 格式化日期时间 (YYYY/MM/DD HH:mm:ss)
+ * @param {string} dateString
  */
-export const handleImageError = (event) => {
-  event.target.src = 'https://via.placeholder.com/300x150.png?text=No+Image'
+export const formatDateTime = (dateString) => {
+  if (!dateString) return ''
+  try {
+    return new Date(dateString).toLocaleString('zh-CN')
+  } catch (e) {
+    return dateString
+  }
 }

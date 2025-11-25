@@ -1,0 +1,84 @@
+<script setup>
+import { ref, onMounted } from 'vue'
+import apiClient from '@/api'
+import { formatDate } from '@/utils/common'
+
+const comments = ref([])
+const loading = ref(true)
+
+const fetchComments = async () => {
+  loading.value = true
+  try {
+    // 后端 CommentViewSet 已修改为允许管理员获取所有
+    const res = await apiClient.get('/api/comments/')
+    comments.value = res.data.results || res.data
+  } catch (e) {
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleDelete = async (id) => {
+  if (!confirm('确定要删除这条评论吗？')) return
+  try {
+    await apiClient.delete(`/api/comments/${id}/`)
+    comments.value = comments.value.filter(c => c.id !== id)
+  } catch (e) {
+    alert('删除失败')
+  }
+}
+
+onMounted(fetchComments)
+</script>
+
+<template>
+  <div class="manager-view">
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th width="15%">用户</th>
+            <th width="50%">内容</th>
+            <th width="20%">来源</th>
+            <th width="15%">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="comment in comments" :key="comment.id">
+            <td class="fw-bold">{{ comment.user?.username || '未知' }}</td>
+            <td>
+              <div class="content-text">{{ comment.content }}</div>
+              <div class="time-text">{{ formatDate(comment.created_at) }}</div>
+            </td>
+            <td class="source-text">
+               课程ID: {{ comment.lesson }}
+               </td>
+            <td>
+              <button @click="handleDelete(comment.id)" class="btn-sm danger">删除</button>
+            </td>
+          </tr>
+          <tr v-if="comments.length === 0">
+            <td colspan="4" class="text-center">暂无评论数据</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.manager-view { padding: 0; }
+.table-container { background: white; border-radius: 8px; border: 1px solid #e5e7eb; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+th { background: #f9fafb; color: #374151; font-weight: 600; }
+.content-text { color: #374151; margin-bottom: 4px; }
+.time-text { font-size: 0.8rem; color: #9ca3af; }
+.source-text { font-size: 0.9rem; color: #6b7280; }
+.btn-sm { padding: 4px 10px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.85rem; }
+.btn-sm.danger { background: #fee2e2; color: #dc2626; }
+.btn-sm.danger:hover { background: #fecaca; }
+.fw-bold { font-weight: 600; }
+.text-center { text-align: center; color: #999; padding: 30px; }
+</style>

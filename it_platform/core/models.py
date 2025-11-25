@@ -38,16 +38,20 @@ class CustomUser(AbstractUser):
         return self.nickname if self.nickname else self.username
 
 
-# --- 2. 课程分类 ---
+# --- 2. 课程分类 (这里增加了 order 字段) ---
 class Category(models.Model):
     name = models.CharField(verbose_name="分类名称", max_length=100, unique=True)
     slug = models.SlugField(
         max_length=100, unique=True, blank=True, allow_unicode=True,
         help_text="用于URL的短标签"
     )
+    # 【新增】权重字段，默认 0，数值越大越靠前
+    order = models.IntegerField(verbose_name="热门权重", default=0, help_text="数值越大，排序越靠前")
 
     class Meta:
         verbose_name_plural = "Categories"
+        # 默认按权重降序排列
+        ordering = ['-order']
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -58,7 +62,7 @@ class Category(models.Model):
         return self.name
 
 
-# --- 3. 课程模型 (这就是报错说找不到的类) ---
+# --- 3. 课程模型 ---
 class Course(models.Model):
     title = models.CharField(verbose_name="课程标题", max_length=255, db_index=True)
     description = models.TextField(verbose_name="课程描述")

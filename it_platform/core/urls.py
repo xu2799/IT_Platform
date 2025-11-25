@@ -2,10 +2,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import RegisterView, ChangePasswordView # 【新增】
+from .views import RegisterView, ChangePasswordView
 
 router = DefaultRouter()
-# ... (router.register 保持不变) ...
 router.register(r'courses', views.CourseViewSet, basename='course')
 router.register(r'modules', views.ModuleViewSet, basename='module')
 router.register(r'lessons', views.LessonViewSet, basename='lesson')
@@ -13,12 +12,15 @@ router.register(r'categories', views.CategoryViewSet, basename='category')
 router.register(r'applications', views.InstructorApplicationViewSet, basename='application')
 router.register(r'comments', views.CommentViewSet, basename='comment')
 
+# 【新增】管理员用户管理接口
+router.register(r'admin/users', views.UserManagementViewSet, basename='admin-users')
+
 urlpatterns = [
     path('', include(router.urls)),
 
     # 用户相关
     path('users/me/', views.UserView.as_view(), name='user-me'),
-    path('users/change-password/', ChangePasswordView.as_view(), name='change-password'), # 【新增】
+    path('users/change-password/', ChangePasswordView.as_view(), name='change-password'),
 
     path('instructor/courses/', views.InstructorCourseListView.as_view(), name='instructor-courses'),
 

@@ -10,10 +10,15 @@ export const useCourseStore = defineStore('courses', () => {
   const isStale = ref(true)
 
   async function fetchCourses(params = {}) {
-    // 简单的缓存策略：如果数据不陈旧且没有查询参数，直接返回
+    // 【修复 Bug】：移除这里导致“无法切回全部课程”的缓存判断。
+    // 原问题：当你先选分类，courses 变成了子集。再点“全部课程”时，params为空，
+    // 旧逻辑会误以为“本地有数据且没参数”就是全集，直接返回了那个子集。
+
+    /* // --- 移除的旧代码 ---
     if (!isStale.value && courses.value.length > 0 && !params.search && !params.category) {
       return
     }
+    */
 
     isLoading.value = true
     error.value = null
@@ -33,7 +38,7 @@ export const useCourseStore = defineStore('courses', () => {
   async function fetchCourseDetail(courseId) {
     const existingCourse = courses.value.find(c => c.id == courseId)
 
-    // 如果缓存中有完整的详情数据（包含模块信息），直接使用
+    // 详情页的缓存逻辑可以保留，因为ID是唯一的，不会有集合与子集的歧义
     if (!isStale.value && existingCourse?.modules && existingCourse.is_liked !== undefined) {
       return existingCourse
     }

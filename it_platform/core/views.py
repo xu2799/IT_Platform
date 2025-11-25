@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, BasePermission, IsAdminUser, IsAuthenticatedOrReadOnly
 from rest_framework.views import APIView
-from rest_framework.generics import ListAPIView  # 【关键修复】添加了这个导入
+from rest_framework.generics import ListAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Count, F
 from .models import (
@@ -211,13 +211,20 @@ class ChangePasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# --- 9. 评论视图 ---
+# --- 9. 评论视图 (【修改】：增强逻辑支持管理员管理所有评论) ---
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     pagination_class = None
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['content', 'user__username', 'lesson__title']
 
     def get_queryset(self):
+        # 如果是管理员，返回所有评论，方便管理
+        if self.request.user.is_staff:
+            return Comment.objects.all().select_related('user', 'lesson').order_by('-created_at')
+
+        # 普通用户的逻辑：只展示顶层评论，子评论通过 replies 字段获取
         queryset = Comment.objects.select_related(
             'user', 'reply_to_user'
         ).prefetch_related(
@@ -314,3 +321,12 @@ class RegisterView(APIView):
             return Response({'detail': '注册成功'}, status=status.HTTP_201_CREATED)
         except Exception:
             return Response({'detail': '注册失败'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# --- 12. 【新增】用户管理视图 (仅管理员) ---
+class UserManagementViewSet(viewsets.ModelViewSet):
+    queryset = CustomUser.objects.all().order_by('-date_joined')
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAdminUser]  # 只有超级管理员能访问
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['username', 'email', 'nickname']

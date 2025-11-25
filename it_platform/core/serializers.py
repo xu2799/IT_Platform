@@ -10,7 +10,9 @@ from .models import (
 class UserSerializer(serializers.ModelSerializer):
     enrollments = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     favorited_courses = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
-    avatar = serializers.ImageField(read_only=True)
+
+    # 【修复】: 允许头像字段写入 (移除 read_only=True，改为 required=False)
+    avatar = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = CustomUser

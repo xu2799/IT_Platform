@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/authStore'
 import apiClient from '@/api'
 import BackButton from '@/components/BackButton.vue'
 import CommentItem from '@/components/CommentItem.vue'
+// 【优化】：导入工具函数，移除组件内冗余定义
+import { getFullMediaUrl } from '@/utils/common'
 
 const router = useRouter()
 const route = useRoute()
@@ -16,15 +18,6 @@ const props = defineProps({
   courseId: { type: String, required: true },
   lessonId: { type: String, required: true }
 })
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-const getFullMediaUrl = (relativePath) => {
-  if (!relativePath) return ''
-  if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) return relativePath
-  const cleanPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`
-  const cleanBase = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
-  return `${cleanBase}${cleanPath}`
-}
 
 const videoPlayer = ref(null)
 const videoError = ref(null)
@@ -230,17 +223,17 @@ const myAvatarUrl = computed(() => {
 .separator { color: #ccc; }
 .current-title { font-weight: 600; font-size: 1.1rem; color: #1f2937; }
 
-/* 【修改】限制视频播放器宽度，使其变小且居中 */
+/* 限制视频播放器宽度，使其变小且居中 */
 .video-stage {
   background: black;
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 15px 35px rgba(0,0,0,0.15);
   margin-bottom: 20px;
-  min-height: 300px; /* 减小最小高度 */
-  max-width: 900px; /* 【关键】限制最大宽度 */
-  margin-left: auto; /* 居中 */
-  margin-right: auto; /* 居中 */
+  min-height: 300px;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
   display: flex;
   flex-direction: column;
 }

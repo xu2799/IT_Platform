@@ -62,8 +62,14 @@ const handleProfileUpdate = async () => {
     })
     authStore.user = response.data
     localStorage.setItem('user', JSON.stringify(response.data))
+
     profileMsg.value = { type: 'success', text: '保存成功！' }
+
+    // 【关键修改】保存成功后，清空本地预览，强制显示后端返回的图片
+    // 这样可以确保用户看到的图片是服务器真正保存成功的那一张
     avatarFile.value = null
+    previewAvatar.value = null
+
   } catch (error) {
     profileMsg.value = { type: 'error', text: '保存失败，请重试。' }
   } finally {

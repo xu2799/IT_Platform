@@ -3,12 +3,12 @@ import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import apiClient from '@/api'
 import BackButton from '@/components/BackButton.vue'
+// 【优化】：导入工具函数
+import { getFullCoverImagePath, handleImageError } from '@/utils/common'
 
 const courses = ref([])
 const loading = ref(true)
 const error = ref(null)
-
-// (API_URL 已移至 apiClient)
 
 onMounted(async () => {
   loading.value = true
@@ -28,34 +28,17 @@ onMounted(async () => {
     loading.value = false
   }
 })
-
-// --- (辅助函数) ---
-const getFullCoverImagePath = (relativePath) => {
-    if (relativePath) {
-        if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
-            return relativePath
-        }
-        // 使用 apiClient 的 baseURL
-        const baseUrl = apiClient.defaults.baseURL || ''
-        return `${baseUrl}${relativePath}`
-    }
-    return 'https://via.placeholder.com/300x150.png?text=No+Cover'
-}
-
-const handleImageError = (event) => {
-    event.target.src = 'https://via.placeholder.com/300x150.png?text=No+Cover'
-}
 </script>
 
 <template>
   <div class="course-list-container">
-    <BackButton 
-      :fallback-route="{ name: 'courses' }" 
+    <BackButton
+      :fallback-route="{ name: 'courses' }"
       text="返回课程列表"
       small
     />
     <h1 class="page-title">我的收藏</h1>
-    
+
     <div v-if="loading" class="loading-container">
       <p>正在加载...</p>
     </div>
@@ -65,16 +48,16 @@ const handleImageError = (event) => {
     </div>
 
     <section v-else-if="courses.length > 0" class="course-grid">
-      <div 
-        v-for="course in courses" 
-        :key="course.id" 
+      <div
+        v-for="course in courses"
+        :key="course.id"
         class="course-card"
       >
         <RouterLink :to="`/courses/${course.id}`" class="course-link-wrapper">
           <div class="course-thumbnail">
-            <img 
-                :src="getFullCoverImagePath(course.cover_image)" 
-                :alt="course.title + '封面'" 
+            <img
+                :src="getFullCoverImagePath(course.cover_image)"
+                :alt="course.title + '封面'"
                 class="cover-image"
                 @error="handleImageError"
             >
@@ -82,7 +65,7 @@ const handleImageError = (event) => {
                 {{ course.category.name }}
             </span>
           </div>
-          
+
           <div class="card-content">
             <h3>{{ course.title }}</h3>
             <div class="card-footer-stats">
@@ -97,7 +80,7 @@ const handleImageError = (event) => {
         </RouterLink>
       </div>
     </section>
-    
+
     <div v-else class="no-results">
         <p>你还没有收藏任何课程。</p>
         <RouterLink :to="{ name: 'courses' }" class="nav-button">
@@ -110,7 +93,7 @@ const handleImageError = (event) => {
 <style scoped>
 /* (样式与 CourseListView 类似) */
 .course-list-container {
-    padding: 20px 40px; 
+    padding: 20px 40px;
 }
 .page-title {
     text-align: center;
@@ -120,27 +103,27 @@ const handleImageError = (event) => {
 .course-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 30px; 
+    gap: 30px;
 }
 .course-link-wrapper {
     text-decoration: none;
     color: inherit;
-    display: flex; 
+    display: flex;
     flex-direction: column;
-    flex-grow: 1; 
+    flex-grow: 1;
 }
 .course-card {
     background-color: #ffffff;
     border-radius: 10px;
-    overflow: hidden; 
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); 
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
     transition: transform 0.3s, box-shadow 0.3s;
-    display: flex; 
-    flex-direction: column; 
+    display: flex;
+    flex-direction: column;
 }
 .course-card:hover {
-    transform: translateY(-8px); 
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); 
+    transform: translateY(-8px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
 }
 .course-thumbnail {
     width: 100%;
@@ -152,7 +135,7 @@ const handleImageError = (event) => {
 .cover-image {
     width: 100%;
     height: 100%;
-    object-fit: cover; 
+    object-fit: cover;
 }
 .category-tag {
     background-color: #3498db;
@@ -167,10 +150,10 @@ const handleImageError = (event) => {
 }
 .card-content {
     padding: 15px;
-    flex-grow: 1; 
-    display: flex; 
-    flex-direction: column; 
-    justify-content: space-between; 
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 .card-content h3 {
     font-size: 1.1rem;
