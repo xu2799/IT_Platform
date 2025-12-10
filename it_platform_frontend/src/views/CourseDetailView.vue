@@ -3,12 +3,9 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useCourseStore } from '@/stores/courseStore'
 import { useAuthStore } from '@/stores/authStore'
-// 【【【修改】】】: 导入 apiClient
 import apiClient from '@/api'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
 import BackButton from '@/components/BackButton.vue'
-
-// (API_URL 已移至 apiClient)
 
 // --- 2. 激活仓库和路由 ---
 const courseStore = useCourseStore()
@@ -25,27 +22,30 @@ const props = defineProps({
 })
 
 // --- 4. 状态 (State) ---
-// (保持不变)
 const newModuleTitle = ref('')
-const openModuleFormId = ref(null) 
-const currentLessonTitle = ref('') 
-const currentVideoFile = ref(null) 
-const uploadStatus = ref('')     
-const editingLessonId = ref(null) 
-const editLessonTitle = ref('') 
-const editLessonVideoFile = ref(null) 
-const editLessonOrder = ref(0) 
-const isUpdatingLesson = ref(false) 
-const deletingLessonId = ref(null) 
-const showDeleteLessonConfirm = ref(false) 
-const isDeletingLesson = ref(false) 
-const lessonToDelete = ref(null) 
+const openModuleFormId = ref(null)
+const currentLessonTitle = ref('')
+const currentVideoFile = ref(null)
+const uploadStatus = ref('')
+const editingLessonId = ref(null)
+const editLessonTitle = ref('')
+const editLessonVideoFile = ref(null)
+const editLessonOrder = ref(0)
+const isUpdatingLesson = ref(false)
+const deletingLessonId = ref(null)
+const showDeleteLessonConfirm = ref(false)
+const isDeletingLesson = ref(false)
+const lessonToDelete = ref(null)
 const lessonErrorMessage = ref('')
 const lessonSuccessMessage = ref('')
-const isMovingLesson = ref(false) 
+const isMovingLesson = ref(false)
+
+// 【新增】作业提交状态
+const activeAssignmentId = ref(null)
+const submissionContent = ref('')
+const isSubmitting = ref(false)
 
 // --- 5. 计算属性 (Computed) ---
-// (保持不变)
 const course = computed(() => {
   return courseStore.courses.find(c => c.id == props.id)
 })
@@ -64,16 +64,12 @@ onMounted(() => {
   courseStore.fetchCourseDetail(props.id)
   startVideoProcessingCheck()
 
-  // --- 【【【新增：记录观看次数】】】 ---
-  // “即发即忘”，我们不需要等待它完成
   try {
+    // 尝试记录一次浏览量（失败不报错）
     apiClient.post(`/api/courses/${props.id}/record_view/`)
-    console.log(`已为课程 ${props.id} 记录一次观看`);
   } catch (error) {
-    // 即便失败也不打扰用户
-    console.warn(`记录课程 ${props.id} 观看次数失败:`, error);
+    console.warn('记录浏览量失败', error)
   }
-  // --- 【【【新增结束】】】 ---
 })
 
 onUnmounted(() => {
@@ -82,7 +78,7 @@ onUnmounted(() => {
   }
 })
 
-// --- 7. 视频处理检查 (不变) ---
+// --- 7. 视频处理检查 ---
 const hasProcessingVideos = () => {
   if (!course.value || !course.value.modules) return false
   for (const module of course.value.modules) {
@@ -110,7 +106,7 @@ const startVideoProcessingCheck = () => {
   }, 10000)
 }
 
-// --- 8. 监听 (不变) ---
+// --- 8. 监听 ---
 watch(course, (newCourse) => {
   if (newCourse) {
     startVideoProcessingCheck()
@@ -121,6 +117,8 @@ watch(course, (newCourse) => {
   if (newCourse && newCourse.modules && newCourse.modules.length > 0) {
     const firstModule = newCourse.modules[0];
     if (firstModule.lessons && firstModule.lessons.length > 0) {
+      // 只有在没有作业的情况下，或者用户只是想看视频时才自动跳转
+      // 暂时保留自动跳转，用户可以点返回查看作业
       const firstLesson = firstModule.lessons[0];
       router.replace({
         name: 'lesson-watch',
@@ -132,8 +130,42 @@ watch(course, (newCourse) => {
   immediate: true
 })
 
-// --- 9. 【【【已修改】】】 核心功能函数 ---
-// (所有函数保持不变)
+// --- 9. 核心功能函数 ---
+
+// 【新增】打开/关闭作业提交框
+const toggleAssignmentForm = (assignId) => {
+  if (activeAssignmentId.value === assignId) {
+    activeAssignmentId.value = null
+    submissionContent.value = ''
+  } else {
+    activeAssignmentId.value = assignId
+    submissionContent.value = ''
+  }
+}
+
+// 【新增】提交作业函数
+const handleSubmitAssignment = async (assignId) => {
+  if (!submissionContent.value.trim()) return alert('请填写作业内容')
+
+  if (!authStore.isAuthenticated) return router.push({ name: 'login' })
+
+  isSubmitting.value = true
+  try {
+    await apiClient.post('/api/submissions/', {
+      assignment: assignId,
+      content: submissionContent.value
+    })
+    alert('作业提交成功！请等待讲师批改。')
+    activeAssignmentId.value = null
+    submissionContent.value = ''
+  } catch (error) {
+    console.error(error)
+    alert('提交失败: ' + (error.response?.data?.detail || '未知错误'))
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
 const handleFileChange = (event) => {
   currentVideoFile.value = event.target.files ? event.target.files[0] : null
 }
@@ -156,7 +188,6 @@ const handleAddModule = async () => {
   if (!newModuleTitle.value.trim()) return
   try {
     const moduleData = { course: props.id, title: newModuleTitle.value }
-    // 【【【修改】】】: 使用 apiClient
     const response = await apiClient.post('/api/modules/', moduleData)
     if (course.value.modules) {
       course.value.modules.push(response.data)
@@ -181,7 +212,6 @@ const handleAddLesson = async (moduleId) => {
   formData.append('module', moduleId)
   formData.append('video_file', currentVideoFile.value)
   try {
-    // 【【【修改】】】: 使用 apiClient
     const response = await apiClient.post('/api/lessons/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
@@ -244,7 +274,6 @@ const handleUpdateLesson = async (lessonId, moduleId) => {
     formData.append('video_file', editLessonVideoFile.value)
   }
   try {
-    // 【【【修改】】】: 使用 apiClient
     const response = await apiClient.patch(`/api/lessons/${lessonId}/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
@@ -297,9 +326,8 @@ const handleDeleteLesson = async () => {
   isDeletingLesson.value = true
   lessonErrorMessage.value = ''
   try {
-    // 【【【修改】】】: 使用 apiClient
     const response = await apiClient.delete(`/api/lessons/${lessonToDelete.value.id}/`)
-    const targetModule = course.value.modules.find(m => 
+    const targetModule = course.value.modules.find(m =>
       m.lessons && m.lessons.some(l => l.id === lessonToDelete.value.id)
     )
     if (targetModule && targetModule.lessons) {
@@ -377,34 +405,33 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
   lessonErrorMessage.value = ''
   lessonSuccessMessage.value = ''
   try {
-    // 【【【修改】】】: 使用 apiClient
     const [response1, response2] = await Promise.all([
       apiClient.patch(`/api/lessons/${lesson1.id}/`, { order: order2 }),
       apiClient.patch(`/api/lessons/${lesson2.id}/`, { order: order1 })
     ])
-    
+
     const lesson1Index = module.lessons.findIndex(l => l.id === lesson1.id)
     const lesson2Index = module.lessons.findIndex(l => l.id === lesson2.id)
-    
+
     if (lesson1Index !== -1) {
       module.lessons[lesson1Index] = { ...response1.data, order: order2 }
     }
     if (lesson2Index !== -1) {
       module.lessons[lesson2Index] = { ...response2.data, order: order1 }
     }
-    
+
     module.lessons.sort((a, b) => {
       const orderA = a.order !== undefined && a.order !== null ? a.order : 999
       const orderB = b.order !== undefined && b.order !== null ? b.order : 999
       return orderA - orderB
     })
-    
+
     courseStore.markAsStale()
     lessonSuccessMessage.value = '课时顺序已更新'
     setTimeout(() => {
       lessonSuccessMessage.value = ''
     }, 2000)
-    
+
   } catch (error) {
     console.error('移动课时失败:', error.response?.data || error.message)
     if (error.response) {
@@ -425,22 +452,22 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
 <template>
   <div class="course-detail">
     <div class="course-header-actions">
-      <BackButton 
+      <BackButton
         v-if="route.query.manage === 'true'"
-        :fallback-route="{ name: 'instructor-dashboard' }" 
+        :fallback-route="{ name: 'instructor-dashboard' }"
         text="返回讲师面板"
         small
         inline
       />
-      <BackButton 
+      <BackButton
         v-else
-        :fallback-route="{ name: 'courses' }" 
+        :fallback-route="{ name: 'courses' }"
         text="返回课程列表"
         small
         inline
       />
     </div>
-    
+
     <div v-if="!course">
       <p>正在加载课程...</p>
     </div>
@@ -453,6 +480,38 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
 
       <hr>
 
+      <div v-if="course.assignments && course.assignments.length > 0" class="assignments-section">
+        <h2>📝 课程作业</h2>
+        <div class="assignment-list">
+          <div v-for="assign in course.assignments" :key="assign.id" class="assignment-card">
+            <div class="assign-header">
+              <h3>{{ assign.title }}</h3>
+              <span class="date">{{ new Date(assign.created_at).toLocaleDateString() }}</span>
+            </div>
+            <p class="assign-desc">{{ assign.description }}</p>
+
+            <button @click="toggleAssignmentForm(assign.id)" class="btn-submit-toggle">
+              {{ activeAssignmentId === assign.id ? '取消提交' : '提交作业' }}
+            </button>
+
+            <div v-if="activeAssignmentId === assign.id" class="submission-form">
+              <textarea
+                v-model="submissionContent"
+                placeholder="在此输入作业内容、代码或 GitHub 链接..."
+                rows="4"
+              ></textarea>
+              <button
+                @click="handleSubmitAssignment(assign.id)"
+                class="btn-confirm-submit"
+                :disabled="isSubmitting"
+              >
+                {{ isSubmitting ? '提交中...' : '确认提交' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <h2>课程内容:</h2>
 
       <div v-if="lessonSuccessMessage" class="lesson-message success">
@@ -461,7 +520,7 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
       <div v-if="lessonErrorMessage" class="lesson-message error">
         {{ lessonErrorMessage }}
       </div>
-      
+
       <div v-if="hasProcessingVideos()" class="video-processing-notice">
         <p>⏳ 检测到正在处理的视频，系统将自动刷新状态...</p>
         <button @click="courseStore.fetchCourseDetail(props.id)" class="btn-refresh">
@@ -470,15 +529,15 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
       </div>
 
       <div class="content-management">
-        <div 
-          v-for="module in course.modules" 
-          :key="module.id" 
+        <div
+          v-for="module in course.modules"
+          :key="module.id"
           class="module-container"
         >
           <div class="module-header">
             <h3>{{ module.title }}</h3>
-            <button 
-              v-if="isInstructorOfCourse" 
+            <button
+              v-if="isInstructorOfCourse"
               @click="showLessonForm(module.id)"
               class="btn-add-lesson"
               :disabled="editingLessonId !== null"
@@ -486,10 +545,10 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
               {{ openModuleFormId === module.id ? '× 关闭' : '+ 添加课时' }}
             </button>
           </div>
-          
+
           <ul>
-            <li 
-              v-for="(lesson, lessonIndex) in sortedLessons(module.lessons)" 
+            <li
+              v-for="(lesson, lessonIndex) in sortedLessons(module.lessons)"
               :key="lesson.id"
               class="lesson-item"
             >
@@ -499,18 +558,18 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
                     <label>课时标题:</label>
                     <input type="text" v-model="editLessonTitle" required :disabled="isUpdatingLesson">
                   </div>
-                  
+
                   <div class="form-group">
                     <label>课时顺序:</label>
                     <input type="number" v-model.number="editLessonOrder" min="0" :disabled="isUpdatingLesson">
                   </div>
-                  
+
                   <div class="form-group">
                     <label>更新视频文件 (可选):</label>
                     <p class="small-text">(如果不选择新文件, 将保留原视频)</p>
                     <input type="file" @change="handleEditLessonFileChange" accept="video/*" :disabled="isUpdatingLesson">
                   </div>
-                  
+
                   <div class="lesson-edit-actions">
                     <button type="submit" class="btn-save" :disabled="isUpdatingLesson">
                       {{ isUpdatingLesson ? '保存中...' : '保存' }}
@@ -521,11 +580,11 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
                   </div>
                 </form>
               </div>
-              
+
               <div v-else class="lesson-display">
                 <div class="lesson-main-content">
                   <div v-if="isInstructorOfCourse" class="lesson-sort-controls">
-                    <button 
+                    <button
                       @click="handleMoveLessonUp(lesson, module.id)"
                       class="btn-sort btn-sort-up"
                       :disabled="isMovingLesson || lessonIndex === 0"
@@ -533,7 +592,7 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
                     >
                       ▲
                     </button>
-                    <button 
+                    <button
                       @click="handleMoveLessonDown(lesson, module.id)"
                       class="btn-sort btn-sort-down"
                       :disabled="isMovingLesson || lessonIndex === sortedLessons(module.lessons || []).length - 1"
@@ -542,9 +601,9 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
                       ▼
                     </button>
                   </div>
-                  
-                  <RouterLink 
-                    :to="{ name: 'lesson-watch', params: { courseId: course.id, lessonId: lesson.id } }" 
+
+                  <RouterLink
+                    :to="{ name: 'lesson-watch', params: { courseId: course.id, lessonId: lesson.id } }"
                     class="lesson-link"
                   >
                     <span class="lesson-number">{{ lessonIndex + 1 }}.</span>
@@ -560,17 +619,17 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
                     </span>
                   </RouterLink>
                 </div>
-                
+
                 <div v-if="isInstructorOfCourse" class="lesson-actions">
-                  <button 
-                    @click="startEditLesson(lesson)" 
+                  <button
+                    @click="startEditLesson(lesson)"
                     class="btn-edit-lesson"
                     title="编辑课时"
                   >
                     编辑
                   </button>
-                  <button 
-                    @click="startDeleteLesson(lesson)" 
+                  <button
+                    @click="startDeleteLesson(lesson)"
                     class="btn-delete-lesson"
                     title="删除课时"
                   >
@@ -583,9 +642,9 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
                 本章节暂无课时
             </li>
           </ul>
-          
-          <div 
-            v-if="isInstructorOfCourse && openModuleFormId === module.id && editingLessonId === null" 
+
+          <div
+            v-if="isInstructorOfCourse && openModuleFormId === module.id && editingLessonId === null"
             class="add-lesson-form-inline"
           >
             <form @submit.prevent="handleAddLesson(module.id)">
@@ -598,7 +657,7 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
                 <label>视频文件 (.mp4, .mov):</label>
                 <input type="file" @change="handleFileChange" accept="video/*" required :disabled="uploadStatus.includes('中')">
               </div>
-              
+
               <button type="submit" class="admin-button upload-button" :disabled="uploadStatus.includes('中')">
                 {{ uploadStatus.includes('中') ? '上传中...' : '上传课时' }}
               </button>
@@ -610,14 +669,14 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
           </div>
         </div>
       </div>
-      
+
       <div v-if="isInstructorOfCourse" class="admin-panel add-chapter-panel">
         <h3>添加新章节</h3>
         <form @submit.prevent="handleAddModule" class="add-module-form">
-          <input 
-            type="text" 
-            v-model="newModuleTitle" 
-            placeholder="输入新章节标题" 
+          <input
+            type="text"
+            v-model="newModuleTitle"
+            placeholder="输入新章节标题"
             required
           >
           <button type="submit" class="admin-button">添加章节</button>
@@ -632,17 +691,17 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
         <p>你确定要删除课时 "<strong>{{ lessonToDelete?.title }}</strong>" 吗？</p>
         <p class="warning-text">此操作不可撤销，课时及其所有评论和进度记录将被永久删除！</p>
         <div class="confirm-actions">
-          <button 
-            type="button" 
-            class="confirm-button cancel-button" 
+          <button
+            type="button"
+            class="confirm-button cancel-button"
             @click="cancelDeleteLesson"
             :disabled="isDeletingLesson"
           >
             取消
           </button>
-          <button 
-            type="button" 
-            class="confirm-button delete-confirm-button" 
+          <button
+            type="button"
+            class="confirm-button delete-confirm-button"
             @click="handleDeleteLesson"
             :disabled="isDeletingLesson"
           >
@@ -655,10 +714,10 @@ const swapLessonOrder = async (lesson1, lesson2, order1, order2, module) => {
 </template>
 
 <style scoped>
-/* 样式部分 (完全不变) */
-.course-detail { 
-  max-width: 800px; 
-  margin: 0 auto; 
+/* 样式部分 */
+.course-detail {
+  max-width: 800px;
+  margin: 0 auto;
   padding: 20px;
 }
 .course-header-actions {
@@ -968,7 +1027,7 @@ h2 { margin-bottom: 15px; }
 }
 .add-chapter-panel {
   margin-top: 30px;
-  border: 2px dashed #28a745; 
+  border: 2px dashed #28a745;
   padding: 15px;
   border-radius: 8px;
   background-color: #f0fff4;
@@ -978,51 +1037,51 @@ h2 { margin-bottom: 15px; }
   margin-bottom: 10px;
   color: #28a745;
 }
-.add-module-form { 
-  display: flex; 
-  gap: 10px; 
+.add-module-form {
+  display: flex;
+  gap: 10px;
 }
-.add-module-form input { 
-  flex-grow: 1; 
-  padding: 10px; 
-  border: 1px solid #ccc; 
-  border-radius: 4px; 
+.add-module-form input {
+  flex-grow: 1;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
-.form-group label { 
+.form-group label {
   display: block;
-  font-weight: bold; 
-  margin-bottom: 5px; 
+  font-weight: bold;
+  margin-bottom: 5px;
   font-size: 0.9rem;
 }
-.form-group input { 
+.form-group input {
   width: 100%;
-  padding: 8px; 
-  border: 1px solid #ccc; 
+  padding: 8px;
+  border: 1px solid #ccc;
   border-radius: 4px;
   box-sizing: border-box;
 }
-.admin-button { 
-  padding: 10px 15px; 
-  background-color: #007bff; 
-  color: white; 
-  border: none; 
-  border-radius: 4px; 
+.admin-button {
+  padding: 10px 15px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
 }
-.admin-button:hover { 
-  background-color: #0056b3; 
+.admin-button:hover {
+  background-color: #0056b3;
 }
-.upload-button { 
-  background-color: #28a745; 
+.upload-button {
+  background-color: #28a745;
   align-self: flex-start;
 }
 .upload-button:hover {
   background-color: #218838;
 }
-.status-msg { 
-    margin-top: 10px; 
-    font-weight: bold; 
+.status-msg {
+    margin-top: 10px;
+    font-weight: bold;
 }
 .delete-confirm-overlay {
     position: fixed;
@@ -1090,5 +1149,76 @@ h2 { margin-bottom: 15px; }
 }
 .delete-confirm-button:hover:not(:disabled) {
     background-color: #c82333;
+}
+
+/* 【新增】作业板块样式 */
+.assignments-section {
+  margin-top: 30px;
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+.assignment-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.assign-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.assign-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+.assign-desc {
+  color: #666;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+.btn-submit-toggle {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.btn-submit-toggle:hover {
+  background: #4338ca;
+}
+.submission-form {
+  margin-top: 15px;
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+.submission-form textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+.btn-confirm-submit {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.btn-confirm-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

@@ -11,24 +11,20 @@ const route = useRoute()
 
 const searchQuery = ref('')
 
-// 头部显示逻辑
 const shouldShowHeader = computed(() => !route.meta.hideHeader)
 const shouldShowSimpleHeader = computed(() => !!route.meta.simpleHeader)
 const shouldShowFullHeader = computed(() => shouldShowHeader.value && !shouldShowSimpleHeader.value)
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
-// 获取头像 URL 辅助函数
 const getAvatarUrl = (user) => {
   if (!user) return ''
   if (user.avatar) {
-      // 处理相对路径
       if (user.avatar.startsWith('http')) return user.avatar
       const cleanPath = user.avatar.startsWith('/') ? user.avatar : `/${user.avatar}`
       const cleanBase = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
       return `${cleanBase}${cleanPath}`
   }
-  // 默认头像生成
   return `https://ui-avatars.com/api/?name=${user.username}&background=4f46e5&color=fff`
 }
 
@@ -120,21 +116,17 @@ const handleSearchSubmit = () => {
 </template>
 
 <style scoped>
-/* 头部基础样式 */
 .app-header { height: 70px; padding: 0 30px; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 100; transition: all 0.3s; }
 .app-header.glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(0,0,0,0.05); box-shadow: var(--shadow-sm); }
 
-/* 导航布局 */
 .navbar-left, .navbar-right { display: flex; align-items: center; gap: 20px; flex: 1; }
 .navbar-right { justify-content: flex-end; }
 .navbar-user { display: flex; align-items: center; gap: 15px; }
 .navbar-center { flex: 2; display: flex; justify-content: center; max-width: 600px; margin: 0 20px; }
 .navbar-main { display: flex; align-items: center; gap: 20px; }
 
-/* Logo 样式 */
 .logo-text { font-size: 1.2rem; font-weight: 800; background: linear-gradient(135deg, var(--color-primary) 0%, #8b5cf6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; white-space: nowrap; }
 
-/* 链接与按钮 */
 .nav-link { color: var(--color-text-main); font-weight: 500; font-size: 0.95rem; cursor: pointer; padding: 8px 12px; border-radius: 6px; white-space: nowrap; }
 .nav-link:hover { color: var(--color-primary); background: rgba(79, 70, 229, 0.05); }
 .nav-btn { padding: 8px 20px; border-radius: 20px; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; white-space: nowrap; display: inline-block; }
@@ -142,13 +134,11 @@ const handleSearchSubmit = () => {
 .nav-btn.primary:hover { background: var(--color-primary-hover); transform: translateY(-1px); }
 .nav-btn.success { background: var(--color-success); color: white; }
 
-/* 搜索框 */
 .search-form { position: relative; width: 100%; }
 .search-input { width: 100%; padding: 10px 20px; border-radius: 30px; border: 1px solid #e5e7eb; background: #f9fafb; outline: none; transition: all 0.2s; }
 .search-input:focus { border-color: var(--color-primary); background: white; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
 .search-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; opacity: 0.6; font-size: 1.1rem; }
 
-/* 下拉菜单 */
 .dropdown-wrapper { position: relative; height: 100%; display: flex; align-items: center; }
 .dropdown-wrapper:hover .dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0); }
 .dropdown-menu { position: absolute; top: 100%; left: 0; width: 180px; background: white; border-radius: 8px; box-shadow: var(--shadow-lg); border: 1px solid #f3f4f6; padding: 8px; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s ease; z-index: 200; }
@@ -159,7 +149,6 @@ const handleSearchSubmit = () => {
 .dropdown-item.danger:hover { background: #fef2f2; }
 .divider { height: 1px; background: #e5e7eb; margin: 6px 0; }
 
-/* 用户头像区 */
 .user-trigger { display: flex; align-items: center; gap: 8px; }
 .nav-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid #e0e7ff; }
 .username { font-weight: 600; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }

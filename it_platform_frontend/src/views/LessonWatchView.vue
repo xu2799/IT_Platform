@@ -22,12 +22,18 @@ const props = defineProps({
   lessonId: { type: String, required: true }
 })
 
-const activeTab = ref('info') // info, comments, notes, code
+// 【修改】添加 'assignments' 到 activeTab
+const activeTab = ref('info') // info, comments, notes, code, assignments
 const videoPlayer = ref(null)
 const currentTime = ref(0)
 const comments = ref([])
 const newComment = ref('')
 const isPostingComment = ref(false)
+
+// 【新增】作业相关状态
+const activeAssignmentId = ref(null)
+const submissionContent = ref('')
+const isSubmitting = ref(false)
 
 onMounted(async () => {
   try { await courseStore.fetchCourseDetail(props.courseId) } catch (e) {}
@@ -85,6 +91,38 @@ const handlePostComment = async () => {
     newComment.value = ''
   } finally { isPostingComment.value = false }
 }
+
+// 【新增】作业相关函数
+const toggleAssignmentForm = (assignId) => {
+  if (activeAssignmentId.value === assignId) {
+    activeAssignmentId.value = null
+    submissionContent.value = ''
+  } else {
+    activeAssignmentId.value = assignId
+    submissionContent.value = ''
+  }
+}
+
+const handleSubmitAssignment = async (assignId) => {
+  if (!submissionContent.value.trim()) return alert('请填写作业内容')
+  if (!authStore.isAuthenticated) return router.push({ name: 'login' })
+
+  isSubmitting.value = true
+  try {
+    await apiClient.post('/api/submissions/', {
+      assignment: assignId,
+      content: submissionContent.value
+    })
+    alert('作业提交成功！请等待讲师批改。')
+    activeAssignmentId.value = null
+    submissionContent.value = ''
+  } catch (error) {
+    console.error(error)
+    alert('提交失败: ' + (error.response?.data?.detail || '未知错误'))
+  } finally {
+    isSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -110,8 +148,11 @@ const handlePostComment = async () => {
         <div class="tabs-container">
           <div class="tabs-header">
             <button :class="{ active: activeTab === 'info' }" @click="activeTab = 'info'">课程详情</button>
+            <button :class="{ active: activeTab === 'assignments' }" @click="activeTab = 'assignments'">
+              📝 作业 ({{ course?.assignments?.length || 0 }})
+            </button>
             <button :class="{ active: activeTab === 'comments' }" @click="activeTab = 'comments'">讨论区 ({{ comments.length }})</button>
-            <button :class="{ active: activeTab === 'notes' }" @click="activeTab = 'notes'">我的笔记 📝</button>
+            <button :class="{ active: activeTab === 'notes' }" @click="activeTab = 'notes'">我的笔记</button>
             <button :class="{ active: activeTab === 'code' }" @click="activeTab = 'code'">代码沙箱 💻</button>
           </div>
 
@@ -119,6 +160,40 @@ const handlePostComment = async () => {
             <div v-if="activeTab === 'info'" class="tab-pane info-pane">
               <h2>{{ lesson?.title }}</h2>
               <div class="desc" v-html="lesson?.content || '<p class=\'text-muted\'>暂无文本介绍</p>'"></div>
+            </div>
+
+            <div v-if="activeTab === 'assignments'" class="tab-pane">
+              <div v-if="!course?.assignments || course.assignments.length === 0" class="empty-msg">
+                🎉 本课程暂无作业
+              </div>
+              <div v-else class="assignment-list">
+                <div v-for="assign in course.assignments" :key="assign.id" class="assignment-card">
+                  <div class="assign-header">
+                    <h3>{{ assign.title }}</h3>
+                    <span class="assign-date">{{ new Date(assign.created_at).toLocaleDateString() }}</span>
+                  </div>
+                  <p class="assign-desc">{{ assign.description }}</p>
+
+                  <button @click="toggleAssignmentForm(assign.id)" class="btn-submit-toggle">
+                    {{ activeAssignmentId === assign.id ? '取消提交' : '提交作业' }}
+                  </button>
+
+                  <div v-if="activeAssignmentId === assign.id" class="submission-form">
+                    <textarea
+                      v-model="submissionContent"
+                      placeholder="在此输入作业内容、代码或 GitHub 链接..."
+                      rows="4"
+                    ></textarea>
+                    <button
+                      @click="handleSubmitAssignment(assign.id)"
+                      class="btn-confirm-submit"
+                      :disabled="isSubmitting"
+                    >
+                      {{ isSubmitting ? '提交中...' : '确认提交' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div v-if="activeTab === 'comments'" class="tab-pane">
@@ -209,6 +284,21 @@ const handlePostComment = async () => {
 .status-icon { font-size: 0.8rem; color: #94a3b8; width: 15px; text-align: center; }
 .playing .status-icon { color: #4f46e5; }
 .item-title { font-size: 0.95rem; color: #334155; line-height: 1.4; }
+
+/* 【新增】作业卡片样式 */
+.assignment-list { display: flex; flex-direction: column; gap: 15px; }
+.assignment-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; background: #fff; }
+.assign-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.assign-header h3 { margin: 0; font-size: 1.1rem; color: #333; }
+.assign-date { font-size: 0.85rem; color: #999; }
+.assign-desc { color: #666; font-size: 0.95rem; margin-bottom: 15px; line-height: 1.5; }
+.btn-submit-toggle { background: #4f46e5; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+.btn-submit-toggle:hover { background: #4338ca; }
+.submission-form { margin-top: 15px; padding: 15px; background: #f9fafb; border-radius: 6px; }
+.submission-form textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; margin-bottom: 10px; font-family: inherit; }
+.btn-confirm-submit { background: #10b981; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+.btn-confirm-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
 @media (max-width: 1200px) {
   .watch-container { flex-direction: column; height: auto; overflow: visible; }
   .playlist-sidebar { width: 100%; border-left: none; border-top: 1px solid #e5e7eb; height: auto; max-height: 500px; }

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     CustomUser, Course, Module, Lesson, Category,
-    InstructorApplication, Comment, Note, Assignment, Submission # 导入新增模型
+    InstructorApplication, Comment, Note, Assignment, Submission
 )
 
 
@@ -45,6 +45,14 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ['id', 'name', 'slug', 'total_likes']
+
+
+# --- 【新增】 课程详情中的作业简略序列化 ---
+# 专门用于在课程详情API中嵌套显示作业，学生可以看到这些信息
+class CourseAssignmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Assignment
+        fields = ['id', 'title', 'description', 'created_at']
 
 
 # --- 4. 课时序列化 ---
@@ -104,6 +112,10 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     instructor = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
 
+    # 【核心修改】 在详情中包含作业列表
+    # 这样前端获取课程详情时，就会自动带上 assignments 字段
+    assignments = CourseAssignmentSerializer(many=True, read_only=True)
+
     like_count = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
     is_favorited = serializers.SerializerMethodField()
@@ -114,7 +126,8 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'created_at',
             'instructor', 'modules', 'cover_image', 'category',
-            'like_count', 'is_liked', 'is_favorited', 'view_count'
+            'like_count', 'is_liked', 'is_favorited', 'view_count',
+            'assignments'  # 【核心修改】 添加字段到这里
         ]
 
     def get_like_count(self, obj):
@@ -211,7 +224,7 @@ class NoteSerializer(serializers.ModelSerializer):
         read_only_fields = ['user', 'created_at']
 
 
-# --- 11. 作业相关序列化 (新增) ---
+# --- 11. 作业相关序列化 ---
 class SubmissionSerializer(serializers.ModelSerializer):
     student = UserSerializer(read_only=True)
     assignment_title = serializers.CharField(source='assignment.title', read_only=True)
@@ -219,8 +232,10 @@ class SubmissionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Submission
-        fields = ['id', 'assignment', 'assignment_title', 'course_title', 'student', 'content', 'status', 'feedback', 'grade', 'submitted_at']
+        fields = ['id', 'assignment', 'assignment_title', 'course_title', 'student', 'content', 'status', 'feedback',
+                  'grade', 'submitted_at']
         read_only_fields = ['student', 'submitted_at']
+
 
 class AssignmentSerializer(serializers.ModelSerializer):
     submission_count = serializers.IntegerField(read_only=True)
