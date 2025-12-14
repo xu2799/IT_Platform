@@ -1,3 +1,4 @@
+import json
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
@@ -6,6 +7,7 @@ from .models import (
 )
 
 
+# ... (保持 UserSerializer, ChangePasswordSerializer, CategorySerializer 不变) ...
 # --- 1. 用户序列化 ---
 class UserSerializer(serializers.ModelSerializer):
     enrollments = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
@@ -47,14 +49,51 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'slug', 'total_likes']
 
 
-# --- 【新增】 课程详情中的作业简略序列化 ---
-# 专门用于在课程详情API中嵌套显示作业，学生可以看到这些信息
+# --- 【核心修改】 课程详情中的作业简略序列化 (学生看) ---
 class CourseAssignmentSerializer(serializers.ModelSerializer):
+    my_submission = serializers.SerializerMethodField()
+    quiz_questions = serializers.SerializerMethodField()  # 仅返回题目和选项，不含答案
+
     class Meta:
         model = Assignment
-        fields = ['id', 'title', 'description', 'created_at']
+        fields = ['id', 'title', 'description', 'assignment_type', 'quiz_questions', 'created_at', 'my_submission',
+                  'attachment']
+
+    def get_quiz_questions(self, obj):
+        # 如果是选择题，解析 JSON 并移除 'answer' 字段，防止作弊
+        if obj.assignment_type == Assignment.TYPE_CHOICE and obj.quiz_data:
+            try:
+                questions = json.loads(obj.quiz_data)
+                # 过滤掉 answer 字段
+                safe_questions = []
+                for q in questions:
+                    safe_questions.append({
+                        "question": q.get("question"),
+                        "options": q.get("options")
+                    })
+                return safe_questions
+            except:
+                return []
+        return None
+
+    def get_my_submission(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            submission = obj.submissions.filter(student=request.user).first()
+            if submission:
+                return {
+                    'id': submission.id,
+                    'status': submission.status,
+                    'grade': submission.grade,
+                    'feedback': submission.feedback,
+                    'content': submission.content,
+                    'submitted_at': submission.submitted_at,
+                    'attachment': submission.attachment.url if submission.attachment else None
+                }
+        return None
 
 
+# ... (保持 LessonSerializer, ModuleSerializer, CourseListSerializer, CourseDetailSerializer, InstructorApplicationSerializer, ReplySerializer, CommentSerializer, NoteSerializer 不变) ...
 # --- 4. 课时序列化 ---
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
@@ -112,8 +151,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     instructor = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
 
-    # 【核心修改】 在详情中包含作业列表
-    # 这样前端获取课程详情时，就会自动带上 assignments 字段
+    # 在详情中包含作业列表 (会自动使用上面的 CourseAssignmentSerializer)
     assignments = CourseAssignmentSerializer(many=True, read_only=True)
 
     like_count = serializers.SerializerMethodField()
@@ -127,7 +165,7 @@ class CourseDetailSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'created_at',
             'instructor', 'modules', 'cover_image', 'category',
             'like_count', 'is_liked', 'is_favorited', 'view_count',
-            'assignments'  # 【核心修改】 添加字段到这里
+            'assignments'
         ]
 
     def get_like_count(self, obj):
@@ -229,17 +267,21 @@ class SubmissionSerializer(serializers.ModelSerializer):
     student = UserSerializer(read_only=True)
     assignment_title = serializers.CharField(source='assignment.title', read_only=True)
     course_title = serializers.CharField(source='assignment.course.title', read_only=True)
+    assignment_type = serializers.CharField(source='assignment.assignment_type', read_only=True)
 
     class Meta:
         model = Submission
-        fields = ['id', 'assignment', 'assignment_title', 'course_title', 'student', 'content', 'status', 'feedback',
-                  'grade', 'submitted_at']
+        fields = ['id', 'assignment', 'assignment_title', 'course_title', 'assignment_type', 'student', 'content',
+                  'status', 'feedback',
+                  'grade', 'submitted_at', 'attachment']
         read_only_fields = ['student', 'submitted_at']
 
 
 class AssignmentSerializer(serializers.ModelSerializer):
     submission_count = serializers.IntegerField(read_only=True)
 
+    # 讲师端可以看到 quiz_data
     class Meta:
         model = Assignment
-        fields = ['id', 'course', 'title', 'description', 'created_at', 'submission_count']
+        fields = ['id', 'course', 'title', 'description', 'assignment_type', 'quiz_data', 'created_at',
+                  'submission_count', 'attachment']

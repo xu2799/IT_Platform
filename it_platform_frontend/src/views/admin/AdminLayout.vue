@@ -1,169 +1,57 @@
-<script setup>
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/authStore'
-
-const route = useRoute()
-const router = useRouter()
-const authStore = useAuthStore()
-
-const handleLogout = () => {
-  authStore.logout()
-  router.push('/login')
-}
-
-// 简单的路径匹配高亮
-const isActive = (path) => route.path.includes(path)
-</script>
-
 <template>
   <div class="admin-layout">
     <aside class="admin-sidebar">
-      <div class="sidebar-header">
-        <h2>后台管理系统</h2>
-        <p>IT Platform Admin</p>
-      </div>
-
-      <nav class="sidebar-nav">
-        <RouterLink :to="{ name: 'admin-dashboard' }" class="nav-item" :class="{ active: route.name === 'admin-dashboard' }">
-          <span class="icon">📊</span> 仪表盘
-        </RouterLink>
-
-        <RouterLink :to="{ name: 'admin-courses' }" class="nav-item" :class="{ active: isActive('/admin/courses') }">
-          <span class="icon">📚</span> 课程管理
-        </RouterLink>
-
-        <RouterLink :to="{ name: 'admin-users' }" class="nav-item" :class="{ active: isActive('/admin/users') }">
-          <span class="icon">👥</span> 用户管理
-        </RouterLink>
-
-        <RouterLink :to="{ name: 'admin-comments' }" class="nav-item" :class="{ active: isActive('/admin/comments') }">
-          <span class="icon">💬</span> 评论管理
-        </RouterLink>
-
-        <RouterLink :to="{ name: 'admin-applications' }" class="nav-item" :class="{ active: isActive('/admin/applications') }">
-          <span class="icon">👨‍🏫</span> 讲师审核
-        </RouterLink>
-
-        <div class="nav-spacer"></div>
-
-        <RouterLink :to="{ name: 'home' }" class="nav-item">
-          <span class="icon">🏠</span> 返回前台
-        </RouterLink>
-
-        <a @click="handleLogout" class="nav-item danger">
-          <span class="icon">🚪</span> 退出登录
-        </a>
+      <div class="admin-logo">管理后台</div>
+      <nav class="admin-nav">
+        <router-link to="/admin/dashboard" class="nav-item">
+          <i class="icon-dashboard"></i> 仪表盘
+        </router-link>
+        <router-link to="/admin/users" class="nav-item">
+          <i class="icon-user"></i> 用户管理
+        </router-link>
+        <router-link to="/admin/courses" class="nav-item">
+          <i class="icon-book"></i> 课程管理
+        </router-link>
+        <router-link to="/admin/comments" class="nav-item">
+          <i class="icon-comment"></i> 评论审核
+        </router-link>
+        <router-link to="/admin/applications" class="nav-item">
+          <i class="icon-verify"></i> 讲师申请
+        </router-link>
+        <router-link to="/admin/categories" class="nav-item">
+          <i class="icon-list"></i> 分类管理
+        </router-link>
+        <router-link to="/admin/assignments" class="nav-item">
+          <i class="icon-task"></i> 作业监控
+        </router-link>
       </nav>
+      <div class="sidebar-footer">
+        <router-link to="/">返回首页</router-link>
+      </div>
     </aside>
 
-    <main class="admin-content">
-      <header class="content-header">
-        <div class="breadcrumb">
-          当前页面: <strong>{{ route.meta.title || '后台管理' }}</strong>
-        </div>
-        <div class="user-info">
-          管理员: {{ authStore.user?.username }}
+    <main class="admin-main">
+      <header class="admin-header">
+        <span class="page-title">{{ $route.meta.title || '系统管理' }}</span>
+        <div class="admin-info">
+          <span>管理员: {{ authStore.user?.username }}</span>
+          <button @click="handleLogout">退出</button>
         </div>
       </header>
-
-      <div class="content-body">
-        <RouterView />
-      </div>
+      <section class="admin-content">
+        <router-view></router-view>
+      </section>
     </main>
   </div>
 </template>
 
 <style scoped>
-.admin-layout { display: flex; min-height: 100vh; background-color: #f3f4f6; }
-
-/* 侧边栏 */
-.admin-sidebar {
-  width: 240px;
-  background: #1e293b; /* 深蓝灰色 */
-  color: #f1f5f9;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1000;
-}
-
-.sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid #334155;
-  background: #0f172a;
-}
-.sidebar-header h2 { margin: 0; font-size: 1.1rem; font-weight: 700; color: white; }
-.sidebar-header p { margin: 5px 0 0; font-size: 0.8rem; color: #94a3b8; }
-
-.sidebar-nav {
-  flex: 1;
-  padding: 15px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px; /* 菜单项之间的间距 */
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 15px;
-  color: #cbd5e1;
-  text-decoration: none;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  transition: all 0.2s;
-  cursor: pointer;
-}
-
-/* 悬停效果 */
-.nav-item:hover {
-  background: #334155;
-  color: white;
-}
-
-/* 激活状态 */
-.nav-item.active {
-  background: #4f46e5; /* Indigo-600 */
-  color: white;
-  font-weight: 500;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
-
-.nav-item.danger:hover {
-  background: #ef4444;
-  color: white;
-}
-
-.icon { width: 24px; text-align: center; font-size: 1.1rem; }
-
-.nav-spacer { flex: 1; } /* 占位符，将下方菜单推到底部 */
-
-/* 内容区 */
-.admin-content {
-  flex: 1;
-  margin-left: 240px;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.content-header {
-  height: 60px;
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 30px;
-}
-
-.content-body {
-  padding: 30px;
-  overflow-y: auto;
-  flex: 1;
-}
+/* 核心样式建议 */
+.admin-layout { display: flex; min-height: 100vh; background: #f4f7f6; }
+.admin-sidebar { width: 240px; background: #2c3e50; color: white; display: flex; flex-direction: column; }
+.admin-logo { padding: 20px; font-size: 1.5rem; font-weight: bold; border-bottom: 1px solid #3e4e5e; }
+.nav-item { padding: 15px 20px; color: #ecf0f1; text-decoration: none; display: block; }
+.nav-item.router-link-active { background: #34495e; border-left: 4px solid #42b983; }
+.admin-main { flex: 1; display: flex; flex-direction: column; }
+.admin-header { height: 60px; background: white; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 </style>

@@ -1,10 +1,14 @@
+import json
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.utils.text import slugify
 
 
-# --- 1. 用户模型 ---
+# ... (CustomUser, Category, Course, Module, Lesson, Enrollment, LessonProgress, InstructorApplication, Comment, Note 保持不变) ...
+# 为了节省篇幅，上面未修改的模型请保留原样，只替换下面的 Assignment 和 Submission
+
+# --- 1. 用户模型 (保持不变) ---
 class CustomUser(AbstractUser):
     ROLE_STUDENT = 'student'
     ROLE_INSTRUCTOR = 'instructor'
@@ -36,7 +40,7 @@ class CustomUser(AbstractUser):
         return self.nickname if self.nickname else self.username
 
 
-# --- 2. 课程分类 ---
+# --- 2. 课程分类 (保持不变) ---
 class Category(models.Model):
     name = models.CharField(verbose_name="分类名称", max_length=100, unique=True)
     slug = models.SlugField(
@@ -56,7 +60,7 @@ class Category(models.Model):
         return self.name
 
 
-# --- 3. 课程模型 ---
+# --- 3. 课程模型 (保持不变) ---
 class Course(models.Model):
     title = models.CharField(verbose_name="课程标题", max_length=255, db_index=True)
     description = models.TextField(verbose_name="课程描述")
@@ -109,7 +113,7 @@ class Course(models.Model):
         return self.title
 
 
-# --- 4. 章节 ---
+# --- 4. 章节 (保持不变) ---
 class Module(models.Model):
     course = models.ForeignKey(
         Course, on_delete=models.CASCADE,
@@ -126,7 +130,7 @@ class Module(models.Model):
         return f"{self.course.title} - {self.title}"
 
 
-# --- 5. 课时 ---
+# --- 5. 课时 (保持不变) ---
 class Lesson(models.Model):
     LESSON_VIDEO = 'video'
     LESSON_TEXT = 'text'
@@ -164,7 +168,7 @@ class Lesson(models.Model):
         return self.title
 
 
-# --- 6. 注册 (购买) ---
+# --- 6. 注册 (购买) (保持不变) ---
 class Enrollment(models.Model):
     student = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -187,7 +191,7 @@ class Enrollment(models.Model):
         return f"{self.student.username} 注册了 {self.course.title}"
 
 
-# --- 7. 学习进度 ---
+# --- 7. 学习进度 (保持不变) ---
 class LessonProgress(models.Model):
     student = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -210,7 +214,7 @@ class LessonProgress(models.Model):
         return f"{self.student.username} - {self.lesson.title}"
 
 
-# --- 8. 讲师申请 ---
+# --- 8. 讲师申请 (保持不变) ---
 class InstructorApplication(models.Model):
     STATUS_PENDING = 'pending'
     STATUS_APPROVED = 'approved'
@@ -236,7 +240,7 @@ class InstructorApplication(models.Model):
         return f"{self.user.username} 的申请 ({self.status})"
 
 
-# --- 9. 评论 ---
+# --- 9. 评论 (保持不变) ---
 class Comment(models.Model):
     lesson = models.ForeignKey(
         Lesson, on_delete=models.CASCADE,
@@ -270,7 +274,7 @@ class Comment(models.Model):
         return f"{self.user.username} 评论 {self.lesson.title}"
 
 
-# --- 10. 学习笔记 ---
+# --- 10. 学习笔记 (保持不变) ---
 class Note(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -294,18 +298,48 @@ class Note(models.Model):
         return f"{self.user.username} 的笔记 - {self.lesson.title}"
 
 
-# --- 11. 作业系统 (新增) ---
+# --- 11. 作业系统 (升级支持多题) ---
 class Assignment(models.Model):
+    TYPE_REGULAR = 'regular'
+    TYPE_CHOICE = 'choice'
+    TYPE_CHOICES = [
+        (TYPE_REGULAR, '图文/文件作业'),
+        (TYPE_CHOICE, '选择题(多题)'),
+    ]
+
     course = models.ForeignKey(
         Course, on_delete=models.CASCADE,
         related_name='assignments', verbose_name="所属课程"
     )
     title = models.CharField(verbose_name="作业标题", max_length=255)
-    description = models.TextField(verbose_name="作业要求")
+    description = models.TextField(verbose_name="作业要求(或题目描述)")
+
+    assignment_type = models.CharField(
+        verbose_name="作业类型",
+        max_length=20,
+        choices=TYPE_CHOICES,
+        default=TYPE_REGULAR
+    )
+
+    # 【升级】存储完整的题目列表 JSON
+    # 格式示例:
+    # [
+    #   {"question": "1+1=?", "options": {"A":"1","B":"2"}, "answer": "B"},
+    #   {"question": "Python是?", "options": {"A":"蛇","B":"语言"}, "answer": "B"}
+    # ]
+    quiz_data = models.TextField(verbose_name="题目数据(JSON)", blank=True, null=True)
+
+    attachment = models.FileField(
+        verbose_name="作业附件",
+        upload_to='assignments/',
+        null=True, blank=True
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.title
+
 
 class Submission(models.Model):
     STATUS_PENDING = 'pending'
@@ -325,7 +359,16 @@ class Submission(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='submissions', verbose_name="提交学生"
     )
-    content = models.TextField(verbose_name="作业内容(代码或链接)")
+
+    # 普通作业存文本，选择题存答案 JSON (例如: {"0":"A", "1":"C"})
+    content = models.TextField(verbose_name="作业内容")
+
+    attachment = models.FileField(
+        verbose_name="提交附件",
+        upload_to='submissions/',
+        null=True, blank=True
+    )
+
     status = models.CharField(
         verbose_name="状态", max_length=10,
         choices=STATUS_CHOICES, default=STATUS_PENDING

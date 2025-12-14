@@ -1,3 +1,4 @@
+import json
 from rest_framework import viewsets, permissions, status, filters, generics
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -346,13 +347,20 @@ class NoteViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
-# --- 14. 作业管理视图 (新增) ---
+# --- 14. 作业管理视图 ---
 class AssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSerializer
     permission_classes = [IsInstructorOrAdmin]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
-        return Assignment.objects.filter(course__instructor=self.request.user).annotate(
+        user = self.request.user
+        if user.is_staff or user.role == CustomUser.ROLE_ADMIN:
+            return Assignment.objects.annotate(
+                submission_count=Count('submissions')
+            ).order_by('-created_at')
+
+        return Assignment.objects.filter(course__instructor=user).annotate(
             submission_count=Count('submissions')
         ).order_by('-created_at')
 
@@ -360,18 +368,74 @@ class AssignmentViewSet(viewsets.ModelViewSet):
 class SubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = SubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         user = self.request.user
-        if user.role in [CustomUser.ROLE_INSTRUCTOR, CustomUser.ROLE_ADMIN]:
+        if user.is_staff or user.role == CustomUser.ROLE_ADMIN:
+            return Submission.objects.all().order_by('-submitted_at')
+
+        if user.role == CustomUser.ROLE_INSTRUCTOR:
             return Submission.objects.filter(assignment__course__instructor=user).order_by('-submitted_at')
+
         return Submission.objects.filter(student=user).order_by('-submitted_at')
 
     def perform_create(self, serializer):
-        serializer.save(student=self.request.user)
+        # 【升级】多题自动批改逻辑
+        assignment = serializer.validated_data.get('assignment')
+        # content 应该是 JSON 字符串: {"0": "A", "1": "C"} (题号:答案)
+        user_content_raw = serializer.validated_data.get('content', '')
+
+        status_to_save = Submission.STATUS_PENDING
+        grade_to_save = None
+        feedback_to_save = ""
+
+        # 选择题处理
+        if assignment.assignment_type == Assignment.TYPE_CHOICE and assignment.quiz_data:
+            try:
+                # 1. 解析题目数据 (含正确答案)
+                quiz_list = json.loads(assignment.quiz_data)  # [{"answer": "A"}, {"answer": "B"}]
+
+                # 2. 解析用户答案
+                user_answers = json.loads(user_content_raw)  # {"0": "A", "1": "B"}
+
+                correct_count = 0
+                total_count = len(quiz_list)
+
+                if total_count > 0:
+                    for idx, question in enumerate(quiz_list):
+                        correct_key = question.get('answer', '').upper()
+                        # JSON 键通常是字符串 '0', '1'
+                        student_key = user_answers.get(str(idx), '').upper()
+
+                        if correct_key and student_key == correct_key:
+                            correct_count += 1
+
+                    # 计算得分 (百分制)
+                    grade_to_save = int((correct_count / total_count) * 100)
+
+                    if grade_to_save >= 60:
+                        status_to_save = Submission.STATUS_PASSED
+                    else:
+                        status_to_save = Submission.STATUS_REJECTED
+
+                    feedback_to_save = f"系统自动批改：共 {total_count} 题，答对 {correct_count} 题。"
+                else:
+                    feedback_to_save = "系统错误：题目数据为空"
+
+            except Exception as e:
+                print(f"Auto-grade error: {e}")
+                feedback_to_save = "自动批改出错，请联系讲师人工审核。"
+
+        serializer.save(
+            student=self.request.user,
+            status=status_to_save,
+            grade=grade_to_save,
+            feedback=feedback_to_save
+        )
 
 
-# --- 15. 讲师数据看板接口 (新增) ---
+# --- 15. 讲师数据看板接口 ---
 class InstructorAnalyticsView(APIView):
     permission_classes = [IsInstructorOrAdmin]
 
@@ -398,7 +462,7 @@ class InstructorAnalyticsView(APIView):
         })
 
 
-# --- 16. 答疑控制台接口 (新增) ---
+# --- 16. 答疑控制台接口 ---
 class InstructorQAView(ListAPIView):
     serializer_class = CommentSerializer
     permission_classes = [IsInstructorOrAdmin]

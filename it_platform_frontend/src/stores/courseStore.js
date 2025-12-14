@@ -3,23 +3,15 @@ import { defineStore } from 'pinia'
 import apiClient from '@/api'
 
 export const useCourseStore = defineStore('courses', () => {
-  const courses = ref([])
+  const courses = ref([]) // 公开课程列表
+  const instructorCourses = ref([]) // 【新增】讲师自己的课程列表
   const categories = ref([])
   const isLoading = ref(false)
   const error = ref(null)
   const isStale = ref(true)
 
+  // 1. 获取公开课程列表
   async function fetchCourses(params = {}) {
-    // 【修复 Bug】：移除这里导致“无法切回全部课程”的缓存判断。
-    // 原问题：当你先选分类，courses 变成了子集。再点“全部课程”时，params为空，
-    // 旧逻辑会误以为“本地有数据且没参数”就是全集，直接返回了那个子集。
-
-    /* // --- 移除的旧代码 ---
-    if (!isStale.value && courses.value.length > 0 && !params.search && !params.category) {
-      return
-    }
-    */
-
     isLoading.value = true
     error.value = null
     try {
@@ -35,10 +27,23 @@ export const useCourseStore = defineStore('courses', () => {
     }
   }
 
+  // 2. 【新增】获取讲师自己的课程 (用于下拉框选择)
+  async function fetchInstructorCourses() {
+    isLoading.value = true
+    try {
+      const response = await apiClient.get('/api/instructor/courses/')
+      instructorCourses.value = response.data.results || response.data
+    } catch (err) {
+      console.error('获取讲师课程失败:', err)
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  // 3. 获取课程详情
   async function fetchCourseDetail(courseId) {
     const existingCourse = courses.value.find(c => c.id == courseId)
 
-    // 详情页的缓存逻辑可以保留，因为ID是唯一的，不会有集合与子集的歧义
     if (!isStale.value && existingCourse?.modules && existingCourse.is_liked !== undefined) {
       return existingCourse
     }
@@ -47,7 +52,6 @@ export const useCourseStore = defineStore('courses', () => {
       const response = await apiClient.get(`/api/courses/${courseId}/`)
       const detailedCourse = response.data
 
-      // 更新本地列表中的单一课程数据
       const index = courses.value.findIndex(c => c.id == detailedCourse.id)
       if (index !== -1) {
         const newCourses = [...courses.value]
@@ -63,6 +67,7 @@ export const useCourseStore = defineStore('courses', () => {
     }
   }
 
+  // 4. 获取分类
   async function fetchCategories() {
     if (categories.value.length > 0) return
     try {
@@ -77,33 +82,17 @@ export const useCourseStore = defineStore('courses', () => {
     isStale.value = true
   }
 
-  function updateCourseLikeStatus(courseId, liked, like_count) {
-    const index = courses.value.findIndex(c => c.id == courseId)
-    if (index !== -1) {
-      const updatedCourse = { ...courses.value[index], is_liked: liked, like_count }
-      courses.value.splice(index, 1, updatedCourse)
-    }
-  }
-
-  function updateCourseFavoriteStatus(courseId, favorited) {
-    const index = courses.value.findIndex(c => c.id == courseId)
-    if (index !== -1) {
-      const updatedCourse = { ...courses.value[index], is_favorited: favorited }
-      courses.value.splice(index, 1, updatedCourse)
-    }
-  }
-
   return {
     courses,
+    instructorCourses, // 导出这个状态
     categories,
     isLoading,
     error,
     fetchCourses,
+    fetchInstructorCourses, // 导出这个方法
     fetchCourseDetail,
     fetchCategories,
-    markAsStale,
-    updateCourseLikeStatus,
-    updateCourseFavoriteStatus
+    markAsStale
   }
 })
 
