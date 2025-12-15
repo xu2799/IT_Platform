@@ -82,6 +82,10 @@ const handleSearchSubmit = () => {
           </template>
 
           <template v-else>
+            <RouterLink to="/messages" class="icon-btn" title="我的私信">
+              💌
+            </RouterLink>
+
             <RouterLink v-if="['instructor', 'admin'].includes(authStore.user?.role)" to="/create-course" class="nav-btn success">+ 创建课程</RouterLink>
 
             <div class="dropdown-wrapper">
@@ -110,7 +114,7 @@ const handleSearchSubmit = () => {
     </header>
 
     <main class="app-main" :class="{ 'no-header': !shouldShowHeader }">
-      <RouterView :key="route.fullPath" />
+      <RouterView />
     </main>
   </div>
 </template>
@@ -139,6 +143,9 @@ const handleSearchSubmit = () => {
 .search-input:focus { border-color: var(--color-primary); background: white; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
 .search-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; opacity: 0.6; font-size: 1.1rem; }
 
+.icon-btn { font-size: 1.5rem; text-decoration: none; padding: 5px; border-radius: 50%; transition: background 0.2s; cursor: pointer; }
+.icon-btn:hover { background: rgba(0,0,0,0.05); }
+
 .dropdown-wrapper { position: relative; height: 100%; display: flex; align-items: center; }
 .dropdown-wrapper:hover .dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0); }
 .dropdown-menu { position: absolute; top: 100%; left: 0; width: 180px; background: white; border-radius: 8px; box-shadow: var(--shadow-lg); border: 1px solid #f3f4f6; padding: 8px; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s ease; z-index: 200; }
@@ -149,7 +156,7 @@ const handleSearchSubmit = () => {
 .dropdown-item.danger:hover { background: #fef2f2; }
 .divider { height: 1px; background: #e5e7eb; margin: 6px 0; }
 
-.user-trigger { display: flex; align-items: center; gap: 8px; }
+.user-trigger { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .nav-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid #e0e7ff; }
 .username { font-weight: 600; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
 </style>

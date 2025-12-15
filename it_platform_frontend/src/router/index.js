@@ -9,13 +9,14 @@ import CourseDetailView from '@/views/CourseDetailView.vue'
 import CreateCourseView from '@/views/CreateCourseView.vue'
 import CourseListView from '@/views/CourseListView.vue'
 
-// Admin 组件导入 (请确保这些文件都真实存在)
+// Admin 组件导入
 import AdminLayout from '@/views/admin/AdminLayout.vue'
 import AdminDashboardView from '@/views/admin/AdminDashboardView.vue'
 import AdminCourseManager from '@/views/admin/AdminCourseManager.vue'
 import AdminApplicationsView from '@/views/admin/AdminApplicationsView.vue'
 import AdminUserManager from '@/views/admin/AdminUserManager.vue'
 import AdminCommentManager from '@/views/admin/AdminCommentManager.vue'
+import AdminAssignmentManager from '@/views/admin/AdminAssignmentManager.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -97,6 +98,15 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
 
+    // 【新增】私信页面路由
+    {
+      path: '/messages',
+      name: 'messages',
+      // 使用动态导入
+      component: () => import('@/views/MessagesView.vue'),
+      meta: { requiresAuth: true }
+    },
+
     // --- Admin 路由 ---
     {
       path: '/admin',
@@ -114,14 +124,12 @@ const router = createRouter({
           meta: { title: '仪表盘' }
         },
         {
-          // 【重要】: 这里的 component 必须是 AdminCourseManager
           path: 'courses',
           name: 'admin-courses',
           component: AdminCourseManager,
           meta: { title: '课程管理' }
         },
         {
-          // 【重要】: 这里的 component 必须是 AdminUserManager
           path: 'users',
           name: 'admin-users',
           component: AdminUserManager,
@@ -138,6 +146,12 @@ const router = createRouter({
           name: 'admin-applications',
           component: AdminApplicationsView,
           meta: { title: '讲师审核' }
+        },
+        {
+          path: 'assignments',
+          name: 'admin-assignments',
+          component: AdminAssignmentManager,
+          meta: { title: '作业监控' }
         }
       ]
     },

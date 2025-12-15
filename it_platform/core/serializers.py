@@ -2,13 +2,12 @@ import json
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
-    CustomUser, Course, Module, Lesson, Category,
-    InstructorApplication, Comment, Note, Assignment, Submission
+    CustomUser, Course, Module, Lesson, Enrollment,
+    Category, InstructorApplication, Comment, Note, Assignment, Submission, Message, Friendship
 )
 
 
-# ... (保持 UserSerializer, ChangePasswordSerializer, CategorySerializer 不变) ...
-# --- 1. 用户序列化 ---
+# --- 1. 用户序列化 (普通用途) ---
 class UserSerializer(serializers.ModelSerializer):
     enrollments = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     favorited_courses = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
@@ -18,9 +17,9 @@ class UserSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = [
             'id', 'username', 'nickname', 'email', 'avatar', 'bio', 'role',
-            'enrollments', 'favorited_courses'
+            'enrollments', 'favorited_courses', 'date_joined'
         ]
-        read_only_fields = ['role', 'username', 'enrollments', 'favorited_courses']
+        read_only_fields = ['role', 'username', 'enrollments', 'favorited_courses', 'date_joined']
 
     def validate_bio(self, value):
         if value and len(value) > 1000:
@@ -49,10 +48,10 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'slug', 'total_likes']
 
 
-# --- 【核心修改】 课程详情中的作业简略序列化 (学生看) ---
+# --- 课程详情中的作业简略序列化 (学生看) ---
 class CourseAssignmentSerializer(serializers.ModelSerializer):
     my_submission = serializers.SerializerMethodField()
-    quiz_questions = serializers.SerializerMethodField()  # 仅返回题目和选项，不含答案
+    quiz_questions = serializers.SerializerMethodField()
 
     class Meta:
         model = Assignment
@@ -60,11 +59,9 @@ class CourseAssignmentSerializer(serializers.ModelSerializer):
                   'attachment']
 
     def get_quiz_questions(self, obj):
-        # 如果是选择题，解析 JSON 并移除 'answer' 字段，防止作弊
         if obj.assignment_type == Assignment.TYPE_CHOICE and obj.quiz_data:
             try:
                 questions = json.loads(obj.quiz_data)
-                # 过滤掉 answer 字段
                 safe_questions = []
                 for q in questions:
                     safe_questions.append({
@@ -93,7 +90,6 @@ class CourseAssignmentSerializer(serializers.ModelSerializer):
         return None
 
 
-# ... (保持 LessonSerializer, ModuleSerializer, CourseListSerializer, CourseDetailSerializer, InstructorApplicationSerializer, ReplySerializer, CommentSerializer, NoteSerializer 不变) ...
 # --- 4. 课时序列化 ---
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
@@ -150,8 +146,6 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     modules = ModuleSerializer(many=True, read_only=True)
     instructor = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
-
-    # 在详情中包含作业列表 (会自动使用上面的 CourseAssignmentSerializer)
     assignments = CourseAssignmentSerializer(many=True, read_only=True)
 
     like_count = serializers.SerializerMethodField()
@@ -279,9 +273,84 @@ class SubmissionSerializer(serializers.ModelSerializer):
 
 class AssignmentSerializer(serializers.ModelSerializer):
     submission_count = serializers.IntegerField(read_only=True)
+    course_title = serializers.CharField(source='course.title', read_only=True)
 
-    # 讲师端可以看到 quiz_data
     class Meta:
         model = Assignment
-        fields = ['id', 'course', 'title', 'description', 'assignment_type', 'quiz_data', 'created_at',
+        fields = ['id', 'course', 'course_title', 'title', 'description', 'assignment_type', 'quiz_data', 'created_at',
                   'submission_count', 'attachment']
+
+
+# --- 12. 管理员用户管理序列化 ---
+class AdminUserSerializer(serializers.ModelSerializer):
+    """
+    管理员专用：允许修改所有用户字段（包括 role, is_active 等）
+    """
+
+    class Meta:
+        model = CustomUser
+        fields = ['id', 'username', 'nickname', 'email', 'bio', 'role', 'is_active', 'date_joined']
+        read_only_fields = ['date_joined']
+
+
+# --- 13. 私信序列化 ---
+class MessageSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+    receiver = UserSerializer(read_only=True)
+    receiver_username = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = Message
+        fields = ['id', 'sender', 'receiver', 'receiver_username', 'content', 'is_read', 'created_at']
+        read_only_fields = ['sender', 'receiver', 'is_read', 'created_at']
+
+    def create(self, validated_data):
+        receiver_username = validated_data.pop('receiver_username')
+        try:
+            receiver = CustomUser.objects.get(username=receiver_username)
+        except CustomUser.DoesNotExist:
+            raise serializers.ValidationError({"receiver_username": "用户不存在"})
+
+        request = self.context.get('request')
+        if request.user == receiver:
+            raise serializers.ValidationError({"receiver_username": "不能给自己发送私信"})
+
+        message = Message.objects.create(sender=request.user, receiver=receiver, **validated_data)
+        return message
+
+
+# --- 14. 好友关系序列化 (新增) ---
+class FriendshipSerializer(serializers.ModelSerializer):
+    from_user = UserSerializer(read_only=True)
+    to_user = UserSerializer(read_only=True)
+    to_username = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = Friendship
+        fields = ['id', 'from_user', 'to_user', 'to_username', 'status', 'created_at']
+        read_only_fields = ['from_user', 'to_user', 'status', 'created_at']
+
+    def create(self, validated_data):
+        to_username = validated_data.pop('to_username')
+        request = self.context.get('request')
+        from_user = request.user
+
+        try:
+            to_user = CustomUser.objects.get(username=to_username)
+        except CustomUser.DoesNotExist:
+            raise serializers.ValidationError({"to_username": "用户不存在"})
+
+        if from_user == to_user:
+            raise serializers.ValidationError({"to_username": "不能添加自己为好友"})
+
+        if Friendship.objects.filter(from_user=from_user, to_user=to_user).exists():
+            raise serializers.ValidationError({"to_username": "已发送过申请，请勿重复发送"})
+
+        reverse_rel = Friendship.objects.filter(from_user=to_user, to_user=from_user).first()
+        if reverse_rel:
+            if reverse_rel.status == Friendship.STATUS_ACCEPTED:
+                raise serializers.ValidationError({"to_username": "你们已经是好友了"})
+            elif reverse_rel.status == Friendship.STATUS_PENDING:
+                raise serializers.ValidationError({"to_username": "对方已经向你发送了申请，请去处理"})
+
+        return Friendship.objects.create(from_user=from_user, to_user=to_user, status=Friendship.STATUS_PENDING)

@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import RegisterView, ChangePasswordView
+from .views import RegisterView, ChangePasswordView, UserSearchView
 
 router = DefaultRouter()
 router.register(r'courses', views.CourseViewSet, basename='course')
@@ -12,18 +12,19 @@ router.register(r'applications', views.InstructorApplicationViewSet, basename='a
 router.register(r'comments', views.CommentViewSet, basename='comment')
 router.register(r'admin/users', views.UserManagementViewSet, basename='admin-users')
 router.register(r'notes', views.NoteViewSet, basename='note')
-# 【新增】作业路由
 router.register(r'assignments', views.AssignmentViewSet, basename='assignment')
 router.register(r'submissions', views.SubmissionViewSet, basename='submission')
+router.register(r'messages', views.MessageViewSet, basename='message')
+router.register(r'friendships', views.FriendshipViewSet, basename='friendship')
 
 urlpatterns = [
     path('', include(router.urls)),
 
     path('users/me/', views.UserView.as_view(), name='user-me'),
     path('users/change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('users/search/', UserSearchView.as_view(), name='user-search'),
 
     path('instructor/courses/', views.InstructorCourseListView.as_view(), name='instructor-courses'),
-    # 【新增】讲师面板扩展接口
     path('instructor/analytics/', views.InstructorAnalyticsView.as_view(), name='instructor-analytics'),
     path('instructor/qa/', views.InstructorQAView.as_view(), name='instructor-qa'),
 
