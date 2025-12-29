@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import apiClient from '@/api'
 import { useCourseStore } from '@/stores/courseStore'
 import { getFullMediaUrl } from '@/utils/common'
@@ -10,7 +10,21 @@ const submissions = ref([])
 const activeTab = ref('list')
 
 // 筛选状态
+const filterCategorySlug = ref('')
 const filterCourseId = ref('')
+
+// 根据分类筛选课程列表
+const filteredCourses = computed(() => {
+  if (!filterCategorySlug.value) return courseStore.instructorCourses
+  return courseStore.instructorCourses.filter(c => c.category?.slug === filterCategorySlug.value)
+})
+
+// 当分类变化时，重置课程筛选并刷新数据
+watch(filterCategorySlug, () => {
+  filterCourseId.value = ''
+  if (activeTab.value === 'list') fetchAssignments()
+  if (activeTab.value === 'review') fetchSubmissions()
+})
 
 // 详情弹窗状态
 const showDetailModal = ref(false)
@@ -30,7 +44,9 @@ const assignmentFile = ref(null)
 // 获取数据
 const fetchAssignments = async () => {
   try {
-    const params = filterCourseId.value ? { course_id: filterCourseId.value } : {}
+    const params = {}
+    if (filterCourseId.value) params.course_id = filterCourseId.value
+    else if (filterCategorySlug.value) params.category = filterCategorySlug.value
     const res = await apiClient.get('/api/assignments/', { params })
     assignments.value = res.data.results || res.data
   } catch (e) { console.error(e) }
@@ -38,7 +54,9 @@ const fetchAssignments = async () => {
 
 const fetchSubmissions = async () => {
   try {
-    const params = filterCourseId.value ? { course_id: filterCourseId.value } : {}
+    const params = {}
+    if (filterCourseId.value) params.course_id = filterCourseId.value
+    else if (filterCategorySlug.value) params.category = filterCategorySlug.value
     const res = await apiClient.get('/api/submissions/', { params })
     submissions.value = res.data.results || res.data
   } catch (e) { console.error(e) }
@@ -126,6 +144,7 @@ const parseAnswer = (jsonStr) => {
 const downloadFile = (url) => { window.open(getFullMediaUrl(url), '_blank') }
 
 onMounted(async () => {
+  await courseStore.fetchCategories()
   await courseStore.fetchInstructorCourses()
   await fetchAssignments()
   await fetchSubmissions()
@@ -142,9 +161,13 @@ onMounted(async () => {
       </div>
 
       <div class="filter-box" v-if="activeTab !== 'create'">
+          <select v-model="filterCategorySlug">
+              <option value="">所有分类</option>
+              <option v-for="cat in courseStore.categories" :key="cat.slug" :value="cat.slug">{{ cat.name }}</option>
+          </select>
           <select v-model="filterCourseId">
               <option value="">所有课程</option>
-              <option v-for="c in courseStore.instructorCourses" :key="c.id" :value="c.id">{{ c.title }}</option>
+              <option v-for="c in filteredCourses" :key="c.id" :value="c.id">{{ c.title }}</option>
           </select>
       </div>
     </div>
@@ -248,7 +271,8 @@ onMounted(async () => {
 .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
 .toolbar button { margin-right: 10px; padding: 6px 15px; border-radius: 20px; border:none; cursor: pointer; background: #f3f4f6; }
 .toolbar button.active { background: #4f46e5; color: white; }
-.filter-box select { padding: 6px; border-radius: 4px; border: 1px solid #ddd; }
+.filter-box { display: flex; gap: 10px; }
+.filter-box select { padding: 6px 10px; border-radius: 4px; border: 1px solid #ddd; min-width: 120px; }
 
 .item-card { padding: 15px; border: 1px solid #eee; border-radius: 6px; margin-bottom: 10px; }
 .card-top { display: flex; justify-content: space-between; align-items: center; }

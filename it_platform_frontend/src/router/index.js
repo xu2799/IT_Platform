@@ -151,7 +151,7 @@ const router = createRouter({
           path: 'assignments',
           name: 'admin-assignments',
           component: AdminAssignmentManager,
-          meta: { title: '作业监控' }
+          meta: { title: '作业管理' }
         }
       ]
     },
@@ -159,36 +159,36 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-    const authStore = useAuthStore()
-    const requiresAuth = to.meta.requiresAuth
-    const requiredRole = to.meta.requiredRole
+  const authStore = useAuthStore()
+  const requiresAuth = to.meta.requiresAuth
+  const requiredRole = to.meta.requiredRole
 
-    if (authStore.token && (!authStore.user || authStore.user.favorited_courses === undefined)) {
-        try {
-            await authStore.fetchUser()
-        } catch (error) {
-            authStore.logout()
-            return next({ name: 'login' })
-        }
+  if (authStore.token && (!authStore.user || authStore.user.favorited_courses === undefined)) {
+    try {
+      await authStore.fetchUser()
+    } catch (error) {
+      authStore.logout()
+      return next({ name: 'login' })
     }
+  }
 
-    if (requiresAuth && !authStore.isAuthenticated) {
-        return next({ name: 'login' })
+  if (requiresAuth && !authStore.isAuthenticated) {
+    return next({ name: 'login' })
+  }
+
+  if (requiresAuth && requiredRole) {
+    const userRole = authStore.user?.role
+    if (!userRole || !requiredRole.includes(userRole)) {
+      alert('您没有访问此页面的权限。')
+      return next({ name: 'home' })
     }
+  }
 
-    if (requiresAuth && requiredRole) {
-        const userRole = authStore.user?.role
-        if (!userRole || !requiredRole.includes(userRole)) {
-            alert('您没有访问此页面的权限。')
-            return next({ name: 'home' })
-        }
-    }
+  if ((to.name === 'login' || to.name === 'register') && authStore.isAuthenticated) {
+    return next({ name: 'courses' })
+  }
 
-    if ((to.name === 'login' || to.name === 'register') && authStore.isAuthenticated) {
-        return next({ name: 'courses' })
-    }
-
-    next()
+  next()
 })
 
 export default router

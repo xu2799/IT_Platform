@@ -20,7 +20,6 @@ const editForm = ref({
   id: null,
   username: '',
   nickname: '',
-  email: '',
   role: 'student',
   bio: '',
   is_active: true
@@ -78,7 +77,6 @@ const handleEdit = (user) => {
     id: user.id,
     username: user.username,
     nickname: user.nickname || '',
-    email: user.email || '',
     role: user.role,
     bio: user.bio || '',
     is_active: user.is_active !== undefined ? user.is_active : true
@@ -148,7 +146,6 @@ onMounted(fetchUsers)
             <th>ID</th>
             <th>用户</th>
             <th>角色</th>
-            <th>邮箱</th>
             <th>注册时间</th>
             <th>状态</th>
             <th>操作</th>
@@ -180,7 +177,6 @@ onMounted(fetchUsers)
                 {{ user.role === 'admin' ? '管理员' : (user.role === 'instructor' ? '讲师' : '学生') }}
               </span>
             </td>
-            <td>{{ user.email || '-' }}</td>
             <td>{{ formatDate(user.date_joined) }}</td>
             <td>
                <span v-if="user.is_active !== false" class="status-active">正常</span>
@@ -192,7 +188,7 @@ onMounted(fetchUsers)
             </td>
           </tr>
           <tr v-if="users.length === 0">
-            <td colspan="8" class="empty">暂无用户数据</td>
+            <td colspan="7" class="empty">暂无用户数据</td>
           </tr>
         </tbody>
       </table>
@@ -209,10 +205,6 @@ onMounted(fetchUsers)
           <div class="form-group">
             <label>昵称</label>
             <input v-model="editForm.nickname" />
-          </div>
-          <div class="form-group">
-            <label>邮箱</label>
-            <input v-model="editForm.email" type="email" />
           </div>
           <div class="form-group">
             <label>角色</label>

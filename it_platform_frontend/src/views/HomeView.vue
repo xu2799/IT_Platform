@@ -11,16 +11,27 @@ const authStore = useAuthStore()
 const hotCourses = ref([])
 const newCourses = ref([])
 const likedCourses = ref([])
+const categories = ref([])
 const loading = ref(true)
 
-// 【方案 H 数据】FAQ
-const faqs = ref([
-  { q: '课程是免费的吗？', a: '目前平台处于推广期，大部分课程均可免费学习，注册账号即可观看。', open: true },
-  { q: '学习过程中遇到问题怎么办？', a: '每节课下都有评论区，您可以留言提问，讲师和同学会热心解答。', open: false },
-  { q: '如何成为平台讲师？', a: '如果您有技术专长，可以在个人中心申请成为讲师，审核通过后即可发布课程。', open: false },
+// 特色功能数据
+const features = ref([
+  { icon: '🎯', title: '专业课程体系', desc: '从零基础到高级进阶，完整学习路径' },
+  { icon: '👨‍💻', title: '实战导向教学', desc: '真实项目案例，直接应用到工作中' },
+  { icon: '💬', title: '互动答疑社区', desc: '讲师在线答疑，同学互助学习' },
+  { icon: '📜', title: '学习认证证书', desc: '完成课程获得专业认证' }
 ])
 
-const toggleFaq = (index) => { faqs.value[index].open = !faqs.value[index].open }
+// 获取分类图标
+const getCategoryIcon = (name) => {
+  const iconMap = {
+    'Python': '🐍', 'JavaScript': '📜', 'Java': '☕',
+    '前端开发': '🎨', '后端开发': '⚙️', '数据科学': '📊',
+    '人工智能': '🤖', '移动开发': '📱', 'Web开发': '🌐',
+    '数据库': '🗄️', '云计算': '☁️', '运维': '🔧'
+  }
+  return iconMap[name] || '💻'
+}
 
 const recordView = (courseId) => { try { apiClient.post(`/api/courses/${courseId}/record_view/`) } catch (e) {} }
 const handleStartLearning = () => { router.push(authStore.isAuthenticated ? { name: 'courses' } : { name: 'login' }) }
@@ -28,10 +39,16 @@ const handleStartLearning = () => { router.push(authStore.isAuthenticated ? { na
 onMounted(async () => {
   loading.value = true
   try {
-    const [hotRes, newRes, likedRes] = await Promise.all([
-      apiClient.get('/api/courses/popular/'), apiClient.get('/api/courses/newest/'), apiClient.get('/api/courses/top_liked/')
-    ]);
-    hotCourses.value = hotRes.data; newCourses.value = newRes.data; likedCourses.value = likedRes.data
+    const [hotRes, newRes, likedRes, catRes] = await Promise.all([
+      apiClient.get('/api/courses/popular/'),
+      apiClient.get('/api/courses/newest/'),
+      apiClient.get('/api/courses/top_liked/'),
+      apiClient.get('/api/categories/')
+    ])
+    hotCourses.value = hotRes.data
+    newCourses.value = newRes.data
+    likedCourses.value = likedRes.data
+    categories.value = catRes.data.slice(0, 6)
   } catch (error) { console.error(error) } finally { loading.value = false }
 })
 </script>
@@ -51,13 +68,14 @@ onMounted(async () => {
       <div class="hero-visual"><img src="/hero-banner.png" class="hero-img floating" /></div>
     </section>
 
+    <!-- 课程排行 -->
     <div class="ranking-container">
       <div class="ranking-column">
         <div class="column-header"><h3>🔥 热门课程</h3><span class="tag">TOP 3</span></div>
         <div class="card-list">
           <RouterLink v-for="(c, i) in hotCourses" :key="c.id" :to="`/courses/${c.id}`" class="mini-card" @click="recordView(c.id)">
             <div class="rank-badge" :class="`rank-${i+1}`">{{ i + 1 }}</div>
-            <div class="img-wrapper"><img :src="getFullCoverImagePath(c.cover_image)" @error="handleImageError" /></div>
+            <div class="img-wrapper"><img :src="getFullCoverImagePath(c.cover_image)" @error="handleImageError" loading="lazy" /></div>
             <div class="info"><h4>{{ c.title }}</h4><div class="meta"><span>👁️ {{ c.view_count }}</span></div></div>
           </RouterLink>
         </div>
@@ -66,7 +84,7 @@ onMounted(async () => {
         <div class="column-header"><h3>🆕 新课速递</h3></div>
         <div class="card-list">
           <RouterLink v-for="c in newCourses" :key="c.id" :to="`/courses/${c.id}`" class="mini-card" @click="recordView(c.id)">
-            <div class="img-wrapper"><img :src="getFullCoverImagePath(c.cover_image)" @error="handleImageError" /></div>
+            <div class="img-wrapper"><img :src="getFullCoverImagePath(c.cover_image)" @error="handleImageError" loading="lazy" /></div>
             <div class="info"><h4>{{ c.title }}</h4><div class="meta"><span>📅 {{ formatDate(c.created_at) }}</span></div></div>
           </RouterLink>
         </div>
@@ -75,40 +93,45 @@ onMounted(async () => {
         <div class="column-header"><h3>👍 口碑好课</h3></div>
         <div class="card-list">
           <RouterLink v-for="c in likedCourses" :key="c.id" :to="`/courses/${c.id}`" class="mini-card" @click="recordView(c.id)">
-            <div class="img-wrapper"><img :src="getFullCoverImagePath(c.cover_image)" @error="handleImageError" /></div>
+            <div class="img-wrapper"><img :src="getFullCoverImagePath(c.cover_image)" @error="handleImageError" loading="lazy" /></div>
             <div class="info"><h4>{{ c.title }}</h4><div class="meta highlight"><span>❤️ {{ c.like_count }}</span></div></div>
           </RouterLink>
         </div>
       </div>
     </div>
 
-    <section class="faq-section">
-      <div class="section-header">
-        <h3>常见问题解答</h3>
-      </div>
-      <div class="faq-list">
-        <div
-          v-for="(item, index) in faqs"
-          :key="index"
-          class="faq-item"
-          :class="{ open: item.open }"
-          @click="toggleFaq(index)"
-        >
-          <div class="faq-question">
-            <h4>{{ item.q }}</h4>
-            <span class="toggle-icon">{{ item.open ? '−' : '+' }}</span>
-          </div>
-          <div class="faq-answer" v-show="item.open">
-            <p>{{ item.a }}</p>
-          </div>
+    <!-- 特色功能展示区 -->
+    <section class="features-section">
+      <h2 class="section-title">为什么选择我们</h2>
+      <div class="features-grid">
+        <div v-for="feature in features" :key="feature.title" class="feature-card">
+          <div class="feature-icon">{{ feature.icon }}</div>
+          <h3>{{ feature.title }}</h3>
+          <p>{{ feature.desc }}</p>
         </div>
+      </div>
+    </section>
+
+    <!-- 课程分类导航 -->
+    <section class="categories-section" v-if="categories.length > 0">
+      <h2 class="section-title">热门课程分类</h2>
+      <div class="categories-grid">
+        <RouterLink
+          v-for="cat in categories"
+          :key="cat.id"
+          :to="{ name: 'courses', query: { category: cat.slug } }"
+          class="category-card"
+        >
+          <div class="category-icon">{{ getCategoryIcon(cat.name) }}</div>
+          <h3>{{ cat.name }}</h3>
+          <p>{{ cat.total_likes || 0 }} 人喜欢</p>
+        </RouterLink>
       </div>
     </section>
   </div>
 </template>
 
 <style scoped>
-/* 复用样式省略... */
 .home-view-wrapper { width: 100%; min-height: 100vh; position: relative; }
 .hero-section { display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; padding: 80px 20px; position: relative; z-index: 1; }
 .hero-content { max-width: 50%; }
@@ -137,23 +160,112 @@ onMounted(async () => {
 .meta { font-size: 0.75rem; color: var(--color-text-muted); }
 .meta.highlight { color: var(--color-danger); }
 
-/* 【方案 H 样式】FAQ */
-.faq-section { max-width: 800px; margin: 0 auto 80px; padding: 0 20px; position: relative; z-index: 1; }
-.section-header { text-align: center; margin-bottom: 40px; }
-.section-header h3 { font-size: 1.8rem; font-weight: 800; color: var(--color-text-main); }
+.section-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 50px;
+  text-align: center;
+  color: var(--color-text-main);
+}
 
-.faq-item { background: white; border-radius: 12px; border: 1px solid #f3f4f6; margin-bottom: 15px; overflow: hidden; transition: all 0.3s; cursor: pointer; }
-.faq-item:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
-.faq-question { padding: 20px; display: flex; justify-content: space-between; align-items: center; background: #fff; }
-.faq-question h4 { margin: 0; font-size: 1.1rem; font-weight: 600; color: #333; }
-.toggle-icon { font-size: 1.5rem; font-weight: 300; color: var(--color-primary); transition: transform 0.3s; }
-.faq-answer { padding: 0 20px 20px; color: #6b7280; line-height: 1.6; border-top: 1px solid #f9fafb; }
-.faq-item.open .toggle-icon { transform: rotate(45deg); } /* 加号变叉号 */
+.features-section {
+  max-width: 1200px;
+  margin: 80px auto;
+  padding: 0 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 30px;
+}
+
+.feature-card {
+  background: white;
+  padding: 40px 20px;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  transition: transform 0.3s, box-shadow 0.3s;
+  text-align: center;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.feature-icon {
+  font-size: 3rem;
+  margin-bottom: 20px;
+}
+
+.feature-card h3 {
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+  color: var(--color-text-main);
+}
+
+.feature-card p {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.categories-section {
+  max-width: 1200px;
+  margin: 60px auto 80px;
+  padding: 0 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.categories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.category-card {
+  background: white;
+  padding: 30px 20px;
+  border-radius: 12px;
+  text-align: center;
+  text-decoration: none;
+  border: 2px solid #f3f4f6;
+  transition: all 0.3s;
+}
+
+.category-card:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.1);
+}
+
+.category-icon {
+  font-size: 2.5rem;
+  margin-bottom: 15px;
+}
+
+.category-card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+  color: var(--color-text-main);
+}
+
+.category-card p {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
 
 @media (max-width: 768px) {
   .hero-section { flex-direction: column-reverse; text-align: center; padding: 40px 20px; }
   .hero-content { max-width: 100%; }
   .hero-title { font-size: 2.5rem; }
   .hero-actions { justify-content: center; }
+  
+  .features-grid { grid-template-columns: 1fr; }
+  .categories-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

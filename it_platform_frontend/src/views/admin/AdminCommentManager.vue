@@ -1,16 +1,52 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import apiClient from '@/api'
 import { formatDate } from '@/utils/common'
 
 const comments = ref([])
 const loading = ref(true)
+const categories = ref([])
+const courses = ref([])
+const filterCategorySlug = ref('')
+const filterCourseId = ref('')
+
+// 根据分类筛选课程列表
+const filteredCourses = computed(() => {
+  if (!filterCategorySlug.value) return courses.value
+  return courses.value.filter(c => c.category?.slug === filterCategorySlug.value)
+})
+
+// 获取分类列表
+const fetchCategories = async () => {
+  try {
+    const res = await apiClient.get('/api/categories/')
+    categories.value = res.data.results || res.data
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+// 获取所有课程用于筛选
+const fetchCourses = async () => {
+  try {
+    const res = await apiClient.get('/api/courses/')
+    courses.value = res.data.results || res.data
+  } catch (e) {
+    console.error(e)
+  }
+}
 
 const fetchComments = async () => {
   loading.value = true
   try {
+    const params = {}
+    if (filterCourseId.value) {
+      params.course_id = filterCourseId.value
+    } else if (filterCategorySlug.value) {
+      params.category = filterCategorySlug.value
+    }
     // 后端 CommentViewSet 已修改为允许管理员获取所有
-    const res = await apiClient.get('/api/comments/')
+    const res = await apiClient.get('/api/comments/', { params })
     comments.value = res.data.results || res.data
   } catch (e) {
     console.error(e)
@@ -18,6 +54,17 @@ const fetchComments = async () => {
     loading.value = false
   }
 }
+
+// 当分类变化时，重置课程筛选并刷新数据
+watch(filterCategorySlug, () => {
+  filterCourseId.value = ''
+  fetchComments()
+})
+
+// 当课程变化时刷新评论列表
+watch(filterCourseId, () => {
+  fetchComments()
+})
 
 const handleDelete = async (id) => {
   if (!confirm('确定要删除这条评论吗？')) return
@@ -29,18 +76,35 @@ const handleDelete = async (id) => {
   }
 }
 
-onMounted(fetchComments)
+onMounted(() => {
+  fetchCategories()
+  fetchCourses()
+  fetchComments()
+})
 </script>
 
 <template>
   <div class="manager-view">
+    <div class="toolbar">
+      <div class="filter-box">
+        <select v-model="filterCategorySlug">
+          <option value="">所有分类</option>
+          <option v-for="cat in categories" :key="cat.slug" :value="cat.slug">{{ cat.name }}</option>
+        </select>
+        <select v-model="filterCourseId">
+          <option value="">所有课程</option>
+          <option v-for="c in filteredCourses" :key="c.id" :value="c.id">{{ c.title }}</option>
+        </select>
+      </div>
+    </div>
+    
     <div class="table-container">
       <table>
         <thead>
           <tr>
             <th width="15%">用户</th>
-            <th width="50%">内容</th>
-            <th width="20%">来源</th>
+            <th width="45%">内容</th>
+            <th width="25%">来源</th>
             <th width="15%">操作</th>
           </tr>
         </thead>
@@ -69,6 +133,9 @@ onMounted(fetchComments)
 
 <style scoped>
 .manager-view { padding: 0; }
+.toolbar { display: flex; justify-content: flex-end; margin-bottom: 15px; }
+.filter-box { display: flex; gap: 10px; }
+.filter-box select { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; min-width: 150px; font-size: 0.9rem; }
 .table-container { background: white; border-radius: 8px; border: 1px solid #e5e7eb; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #f3f4f6; vertical-align: top; }

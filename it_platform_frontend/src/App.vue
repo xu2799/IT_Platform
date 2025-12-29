@@ -14,6 +14,7 @@ const searchQuery = ref('')
 const shouldShowHeader = computed(() => !route.meta.hideHeader)
 const shouldShowSimpleHeader = computed(() => !!route.meta.simpleHeader)
 const shouldShowFullHeader = computed(() => shouldShowHeader.value && !shouldShowSimpleHeader.value)
+const shouldHideSearch = computed(() => route.name === 'home' || route.name === 'about' || route.path.startsWith('/admin'))
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
@@ -67,7 +68,7 @@ const handleSearchSubmit = () => {
         </nav>
       </div>
 
-      <div class="navbar-center">
+      <div class="navbar-center" v-if="!shouldHideSearch">
         <form @submit.prevent="handleSearchSubmit" class="search-form">
           <input type="text" v-model="searchQuery" placeholder="搜索感兴趣的课程..." class="search-input">
           <button type="submit" class="search-btn">🔍</button>
@@ -82,8 +83,8 @@ const handleSearchSubmit = () => {
           </template>
 
           <template v-else>
-            <RouterLink to="/messages" class="icon-btn" title="我的私信">
-              💌
+            <RouterLink to="/messages" class="nav-btn message" title="我的私信">
+              💌 私信
             </RouterLink>
 
             <RouterLink v-if="['instructor', 'admin'].includes(authStore.user?.role)" to="/create-course" class="nav-btn success">+ 创建课程</RouterLink>
@@ -137,6 +138,8 @@ const handleSearchSubmit = () => {
 .nav-btn.primary { background: var(--color-primary); color: white; box-shadow: 0 2px 5px rgba(79, 70, 229, 0.3); }
 .nav-btn.primary:hover { background: var(--color-primary-hover); transform: translateY(-1px); }
 .nav-btn.success { background: var(--color-success); color: white; }
+.nav-btn.message { background: #ec4899; color: white; box-shadow: 0 2px 5px rgba(236, 72, 153, 0.3); }
+.nav-btn.message:hover { background: #db2777; transform: translateY(-1px); }
 
 .search-form { position: relative; width: 100%; }
 .search-input { width: 100%; padding: 10px 20px; border-radius: 30px; border: 1px solid #e5e7eb; background: #f9fafb; outline: none; transition: all 0.2s; }

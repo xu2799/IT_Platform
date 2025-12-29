@@ -387,12 +387,22 @@ class Message(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='received_messages', verbose_name="接收者"
     )
-    content = models.TextField(verbose_name="私信内容")
+    content = models.TextField(verbose_name="私信内容", blank=True)
+    attachment = models.FileField(
+        verbose_name="附件",
+        upload_to='message_attachments/',
+        null=True, blank=True
+    )
     is_read = models.BooleanField(default=False, verbose_name="是否已读")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="发送时间")
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['receiver', '-created_at']),  # 收件箱查询优化
+            models.Index(fields=['sender', '-created_at']),    # 发件箱查询优化
+            models.Index(fields=['receiver', 'is_read']),      # 未读消息查询优化
+        ]
 
     def __str__(self):
         return f"{self.sender} -> {self.receiver}: {self.content[:20]}"
@@ -429,3 +439,167 @@ class Friendship(models.Model):
 
     def __str__(self):
         return f"{self.from_user} -> {self.to_user} ({self.status})"
+
+
+# --- 14. 轮播图 (Banner) ---
+class Banner(models.Model):
+    title = models.CharField(verbose_name="标题", max_length=100, blank=True)
+    image = models.ImageField(verbose_name="轮播图片", upload_to='banners/')
+    link = models.URLField(verbose_name="跳转链接", blank=True)
+    order = models.PositiveIntegerField(verbose_name="排序", default=0, help_text="数值越小越靠前")
+    is_active = models.BooleanField(verbose_name="是否启用", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', '-created_at']
+        verbose_name = "轮播图"
+        verbose_name_plural = "轮播图"
+
+    def __str__(self):
+        return self.title or f"Banner #{self.id}"
+
+
+# --- 15. 网站公告 ---
+class Announcement(models.Model):
+    TYPE_INFO = 'info'
+    TYPE_WARNING = 'warning'
+    TYPE_SUCCESS = 'success'
+    TYPE_CHOICES = [
+        (TYPE_INFO, '通知'),
+        (TYPE_WARNING, '警告'),
+        (TYPE_SUCCESS, '喜讯'),
+    ]
+
+    title = models.CharField(verbose_name="公告标题", max_length=200)
+    content = models.TextField(verbose_name="公告内容")
+    announce_type = models.CharField(
+        verbose_name="公告类型", max_length=20,
+        choices=TYPE_CHOICES, default=TYPE_INFO
+    )
+    is_active = models.BooleanField(verbose_name="是否显示", default=True)
+    is_pinned = models.BooleanField(verbose_name="是否置顶", default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_pinned', '-created_at']
+        verbose_name = "公告"
+        verbose_name_plural = "公告"
+
+    def __str__(self):
+        return self.title
+
+
+# --- 16. 视频播放进度 ---
+class VideoProgress(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='video_progress', verbose_name="用户"
+    )
+    lesson = models.ForeignKey(
+        Lesson, on_delete=models.CASCADE,
+        related_name='video_progress', verbose_name="课时"
+    )
+    last_position = models.FloatField(verbose_name="上次播放位置(秒)", default=0.0)
+    duration = models.FloatField(verbose_name="视频总时长(秒)", default=0.0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'lesson')
+        verbose_name = "播放进度"
+        verbose_name_plural = "播放进度"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.lesson.title}: {self.last_position}s"
+
+
+# --- 17. 用户积分 ---
+class UserPoints(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='points', verbose_name="用户"
+    )
+    total_points = models.PositiveIntegerField(verbose_name="总积分", default=0)
+    level = models.PositiveIntegerField(verbose_name="等级", default=1)
+    continuous_days = models.PositiveIntegerField(verbose_name="连续学习天数", default=0)
+    last_active_date = models.DateField(verbose_name="最后活跃日期", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "用户积分"
+        verbose_name_plural = "用户积分"
+
+    def __str__(self):
+        return f"{self.user.username}: {self.total_points}分 Lv.{self.level}"
+
+
+# --- 18. 积分记录 ---
+class PointRecord(models.Model):
+    ACTION_WATCH = 'watch'
+    ACTION_COMMENT = 'comment'
+    ACTION_SUBMIT = 'submit'
+    ACTION_LOGIN = 'login'
+    ACTION_CHOICES = [
+        (ACTION_WATCH, '观看视频'),
+        (ACTION_COMMENT, '发表评论'),
+        (ACTION_SUBMIT, '提交作业'),
+        (ACTION_LOGIN, '每日登录'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='point_records', verbose_name="用户"
+    )
+    action = models.CharField(
+        verbose_name="行为类型", max_length=20, choices=ACTION_CHOICES
+    )
+    points = models.IntegerField(verbose_name="积分变化", default=0)
+    description = models.CharField(verbose_name="描述", max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "积分记录"
+        verbose_name_plural = "积分记录"
+
+    def __str__(self):
+        return f"{self.user.username} {self.action}: {self.points}分"
+
+
+# --- 19. 勋章 ---
+class Badge(models.Model):
+    name = models.CharField(verbose_name="勋章名称", max_length=50, unique=True)
+    icon = models.CharField(verbose_name="勋章图标(emoji)", max_length=10, default="🏅")
+    description = models.TextField(verbose_name="获取条件描述")
+    condition_type = models.CharField(verbose_name="条件类型", max_length=50)
+    condition_value = models.PositiveIntegerField(verbose_name="条件数值", default=1)
+    order = models.PositiveIntegerField(verbose_name="排序", default=0)
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = "勋章"
+        verbose_name_plural = "勋章"
+
+    def __str__(self):
+        return f"{self.icon} {self.name}"
+
+
+# --- 20. 用户勋章 ---
+class UserBadge(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='badges', verbose_name="用户"
+    )
+    badge = models.ForeignKey(
+        Badge, on_delete=models.CASCADE,
+        related_name='owners', verbose_name="勋章"
+    )
+    earned_at = models.DateTimeField(auto_now_add=True, verbose_name="获得时间")
+
+    class Meta:
+        unique_together = ('user', 'badge')
+        ordering = ['-earned_at']
+        verbose_name = "用户勋章"
+        verbose_name_plural = "用户勋章"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.badge.name}"

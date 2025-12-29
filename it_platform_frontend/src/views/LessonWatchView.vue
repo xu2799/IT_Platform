@@ -41,6 +41,15 @@ const comments = ref([])
 const newComment = ref('')
 const isPostingComment = ref(false)
 
+// 自动播放下一课
+const showNextLessonPrompt = ref(false)
+const nextLessonCountdown = ref(3)
+let countdownTimer = null
+
+// Toast提示
+const toastMessage = ref('')
+const showToast = ref(false)
+
 // --- 3. 获取课程与课时数据 ---
 const course = computed(() => courseStore.courses.find(c => c.id == props.courseId) || null)
 
@@ -57,6 +66,23 @@ const lesson = computed(() => {
 const safeModules = computed(() => (course.value?.modules || []).filter(m => m && typeof m === 'object'))
 const getSafeLessons = (m) => (m?.lessons || []).filter(l => l && typeof l === 'object')
 
+// 计算下一课
+const nextLesson = computed(() => {
+  if (!course.value?.modules) return null
+  
+  let found = false
+  for (const module of course.value.modules) {
+    const lessons = getSafeLessons(module)
+    for (let i = 0; i < lessons.length; i++) {
+      if (found && lessons[i]) return lessons[i]
+      if (lessons[i].id == props.lessonId) {
+        found = true
+      }
+    }
+  }
+  return null
+})
+
 // --- 4. 视频地址计算 (依赖 getFullCoverImagePath) ---
 const videoUrl = computed(() => {
   const l = lesson.value
@@ -67,12 +93,164 @@ const videoUrl = computed(() => {
 })
 
 // --- 5. 生命周期与监听 ---
+let progressSaveInterval = null
+
 onMounted(async () => {
   try { await courseStore.fetchCourseDetail(props.courseId) } catch (e) {}
   fetchComments(props.lessonId)
+  
+  // 加载上次播放进度
+  loadVideoProgress()
+  
+  // 每10秒保存一次进度
+  progressSaveInterval = setInterval(() => {
+    saveVideoProgress()
+  }, 10000)
+  
+  // 添加键盘事件监听
+  window.addEventListener('keydown', handleKeyPress)
 })
 
-const handleTimeUpdate = (e) => { currentTime.value = e.target.currentTime }
+onUnmounted(() => {
+  // 离开时保存进度
+  saveVideoProgress()
+  if (progressSaveInterval) clearInterval(progressSaveInterval)
+  window.removeEventListener('keydown', handleKeyPress)
+  if (countdownTimer) clearInterval(countdownTimer)
+})
+
+// 加载视频播放进度
+const loadVideoProgress = async () => {
+  if (!authStore.isAuthenticated) return
+  try {
+    const res = await apiClient.get('/api/video-progress/get_progress/', {
+      params: { lesson_id: props.lessonId }
+    })
+    if (res.data.last_position > 0 && videoPlayer.value) {
+      // 等待视频加载后跳转
+      videoPlayer.value.addEventListener('loadedmetadata', () => {
+        if (res.data.last_position < videoPlayer.value.duration - 5) {
+          videoPlayer.value.currentTime = res.data.last_position
+        }
+      }, { once: true })
+    }
+  } catch (e) { console.log('No saved progress') }
+}
+
+// 保存视频播放进度
+const saveVideoProgress = async () => {
+  if (!authStore.isAuthenticated || !videoPlayer.value) return
+  if (currentTime.value < 5) return // 播放不足5秒不保存
+  try {
+    await apiClient.post('/api/video-progress/', {
+      lesson: parseInt(props.lessonId),
+      last_position: Math.floor(currentTime.value),
+      duration: Math.floor(videoPlayer.value.duration || 0)
+    })
+  } catch (e) {}
+}
+
+// 视频时间更新
+const handleTimeUpdate = (e) => {
+  currentTime.value = e.target.currentTime
+}
+
+// 新增：视频结束处理
+const handleVideoEnded = async () => {
+  // 触发观看视频积分
+  try {
+    await apiClient.post('/api/points/add_points/', { action: 'watch' })
+  } catch (e) {}
+  
+  if (nextLesson.value) {
+    showNextLessonPrompt.value = true
+    nextLessonCountdown.value = 3
+    
+    countdownTimer = setInterval(() => {
+      nextLessonCountdown.value--
+      if (nextLessonCountdown.value <= 0) {
+        playNextLesson()
+      }
+    }, 1000)
+  }
+}
+
+const playNextLesson = () => {
+  if (countdownTimer) clearInterval(countdownTimer)
+  showNextLessonPrompt.value = false
+  
+  if (nextLesson.value) {
+    router.push({
+      name: 'lesson-watch',
+      params: { courseId: props.courseId, lessonId: nextLesson.value.id }
+    })
+  }
+}
+
+const cancelAutoPlay = () => {
+  if (countdownTimer) clearInterval(countdownTimer)
+  showNextLessonPrompt.value = false
+}
+
+// 新增：键盘快捷键
+const handleKeyPress = (e) => {
+  // 如果在输入框中，不响应快捷键
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+  
+  const video = videoPlayer.value
+  if (!video) return
+  
+  switch(e.code) {
+    case 'Space':
+      e.preventDefault()
+      video.paused ? video.play() : video.pause()
+      displayToast(video.paused ? '⏸ 已暂停' : '▶ 播放中')
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      video.currentTime = Math.min(video.duration, video.currentTime + 10)
+      displayToast('⏩ 快进 10 秒')
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      video.currentTime = Math.max(0, video.currentTime - 10)
+      displayToast('⏪ 后退 10 秒')
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      video.volume = Math.min(1, video.volume + 0.1)
+      displayToast(`🔊 音量: ${Math.round(video.volume * 100)}%`)
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      video.volume = Math.max(0, video.volume - 0.1)
+      displayToast(`🔉 音量: ${Math.round(video.volume * 100)}%`)
+      break
+    case 'KeyF':
+      e.preventDefault()
+      if (document.fullscreenElement) {
+        document.exitFullscreen()
+      } else {
+        video.requestFullscreen()
+      }
+      break
+    case 'KeyM':
+      e.preventDefault()
+      video.muted = !video.muted
+      displayToast(video.muted ? '🔇 已静音' : '🔊 取消静音')
+      break
+  }
+}
+
+// 新增：Toast提示
+const displayToast = (message) => {
+  toastMessage.value = message
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 2000)
+}
+
 const handleSeek = (time) => { if (videoPlayer.value) { videoPlayer.value.currentTime = time; videoPlayer.value.play() } }
 
 watch(videoUrl, (newUrl) => { if (newUrl && videoPlayer.value) videoPlayer.value.load() })
@@ -96,6 +274,10 @@ const handlePostComment = async () => {
     })
     comments.value.unshift(res.data)
     newComment.value = ''
+    // 触发评论积分
+    try {
+      await apiClient.post('/api/points/add_points/', { action: 'comment' })
+    } catch (e) {}
   } finally { isPostingComment.value = false }
 }
 
@@ -108,12 +290,107 @@ const goBack = () => {
   }
 }
 
-// --- 其他占位函数 ---
-const handleDownload = async (url) => { /* ... */ }
-const toggleAssignmentForm = (assignId) => { /* ... */ }
-const handleSubmissionFileChange = (event) => { /* ... */ }
-const handleSubmitAssignment = async (assign) => { /* ... */ }
-const parseAnswer = (jsonStr) => { /* ... */ }
+// --- 作业与下载功能 ---
+const handleDownload = async (url) => {
+  if (!url || isDownloading.value) return
+  isDownloading.value = true
+  try {
+    const response = await apiClient.get(url, { responseType: 'blob' })
+    const blob = new Blob([response.data])
+    const link = document.createElement('a')
+    link.href = window.URL.createObjectURL(blob)
+    const filename = url.split('/').pop() || 'attachment'
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(link.href)
+  } catch (error) { 
+    window.open(url, '_blank') 
+  } finally { 
+    isDownloading.value = false 
+  }
+}
+
+const toggleAssignmentForm = (assignId) => {
+  if (activeAssignmentId.value === assignId) {
+    activeAssignmentId.value = null
+    submissionContent.value = ''
+    submissionFile.value = null
+    quizAnswers.value = {}
+  } else {
+    activeAssignmentId.value = assignId
+    submissionContent.value = ''
+    submissionFile.value = null
+    quizAnswers.value = {}
+  }
+}
+
+const handleSubmissionFileChange = (event) => {
+  submissionFile.value = event.target.files ? event.target.files[0] : null
+}
+
+const handleSubmitAssignment = async (assign) => {
+  let contentToSend = ''
+  if (assign.assignment_type === 'choice') {
+    if (!assign.quiz_questions || assign.quiz_questions.length === 0) {
+      return alert('题目数据错误')
+    }
+    if (Object.keys(quizAnswers.value).length < assign.quiz_questions.length) {
+      return alert('请完成所有选择题后再提交')
+    }
+    contentToSend = JSON.stringify(quizAnswers.value)
+  } else {
+    if (!submissionContent.value.trim() && !submissionFile.value) {
+      return alert('请填写内容')
+    }
+    contentToSend = submissionContent.value
+  }
+
+  if (!authStore.isAuthenticated) {
+    return router.push({ name: 'login' })
+  }
+
+  isSubmitting.value = true
+  const formData = new FormData()
+  formData.append('assignment', assign.id)
+  formData.append('content', contentToSend)
+  if (submissionFile.value) {
+    formData.append('attachment', submissionFile.value)
+  }
+
+  try {
+    await apiClient.post('/api/submissions/', formData, { 
+      headers: { 'Content-Type': 'multipart/form-data' } 
+    })
+    alert(assign.assignment_type === 'choice' ? '提交成功！系统已自动批改。' : '提交成功！')
+    activeAssignmentId.value = null
+    // 触发提交作业积分
+    try {
+      await apiClient.post('/api/points/add_points/', { action: 'submit' })
+    } catch (e) {}
+    // 刷新课程数据以更新提交状态
+    await courseStore.fetchCourseDetail(props.courseId)
+  } catch (error) {
+    alert('提交失败: ' + (error.response?.data?.detail || '未知错误'))
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const parseAnswer = (jsonStr) => {
+  try {
+    const obj = JSON.parse(jsonStr)
+    if (typeof obj === 'object') {
+      return Object.entries(obj)
+        .map(([idx, ans]) => `第${parseInt(idx)+1}题:${ans}`)
+        .join(';  ')
+    }
+    return jsonStr
+  } catch {
+    return jsonStr
+  }
+}
 
 </script>
 
@@ -139,7 +416,32 @@ const parseAnswer = (jsonStr) => { /* ... */ }
 
         <div class="video-stage">
           <div v-if="videoUrl" class="video-wrapper">
-            <video ref="videoPlayer" :src="videoUrl" controls autoplay playsinline class="html5-player" @timeupdate="handleTimeUpdate"></video>
+            <video 
+              ref="videoPlayer" 
+              :src="videoUrl" 
+              controls 
+              autoplay 
+              playsinline 
+              class="html5-player" 
+              @timeupdate="handleTimeUpdate"
+              @ended="handleVideoEnded"
+            ></video>
+            
+            <!-- 下一课提示 -->
+            <div v-if="showNextLessonPrompt" class="next-lesson-overlay">
+              <div class="next-lesson-card">
+                <h3>播放完毕</h3>
+                <p v-if="nextLesson">{{ nextLessonCountdown }} 秒后将自动播放下一课</p>
+                <p v-else>已完成所有课程</p>
+                <div class="next-lesson-info" v-if="nextLesson">
+                  <strong>下一课：</strong>{{ nextLesson.title }}
+                </div>
+                <div class="next-lesson-actions">
+                  <button v-if="nextLesson" @click="playNextLesson" class="btn-primary">立即播放</button>
+                  <button @click="cancelAutoPlay" class="btn-secondary">取消</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div v-else class="placeholder-screen">
             <div class="spinner"></div>
@@ -168,7 +470,59 @@ const parseAnswer = (jsonStr) => { /* ... */ }
                <div v-if="!course?.assignments || course.assignments.length === 0" class="empty-msg">
                 🎉 本课程暂无作业
                </div>
-               <div v-else>请在课程详情页查看作业</div>
+               <div v-else class="assignment-list">
+                 <div v-for="assign in course.assignments" :key="assign.id" class="assignment-card">
+                   <div class="assign-header">
+                     <div class="title-row">
+                       <h3>{{ assign.title }}</h3>
+                       <span class="type-tag">{{ assign.assignment_type === 'choice' ? '选择题' : '图文/文件' }}</span>
+                     </div>
+                     <span v-if="assign.my_submission" :class="`status-badge ${assign.my_submission.status}`">
+                       {{ assign.my_submission.status === 'passed' ? '✅ 已通过' : (assign.my_submission.status === 'rejected' ? '❌ 需修改' : '⏳ 已提交') }}
+                     </span>
+                     <span v-else class="assign-date">未提交</span>
+                   </div>
+                   <p class="assign-desc">{{ assign.description }}</p>
+                   <div v-if="assign.attachment" class="attachment-link">
+                     <a href="#" @click.prevent="handleDownload(assign.attachment)" class="download-btn">📥 下载附件</a>
+                   </div>
+                   <div v-if="assign.my_submission" class="submission-result">
+                     <div class="result-box">
+                       <p v-if="assign.assignment_type === 'choice'"><strong>我的答案：</strong> {{ parseAnswer(assign.my_submission.content) }}</p>
+                       <p v-else><strong>我的提交：</strong> {{ assign.my_submission.content }}</p>
+                       <p v-if="assign.my_submission.grade !== null"><strong>评分：</strong> {{ assign.my_submission.grade }} 分</p>
+                       <p v-if="assign.my_submission.feedback"><strong>反馈：</strong> {{ assign.my_submission.feedback }}</p>
+                     </div>
+                     <button v-if="assign.my_submission.status === 'rejected'" @click="toggleAssignmentForm(assign.id)" class="btn-retry">重做</button>
+                   </div>
+                   <div v-else>
+                     <button @click="toggleAssignmentForm(assign.id)" class="btn-submit-toggle">{{ activeAssignmentId === assign.id ? '取消' : '开始作答' }}</button>
+                   </div>
+                   <div v-if="activeAssignmentId === assign.id" class="submission-form">
+                     <div v-if="assign.assignment_type === 'choice'" class="choice-container">
+                       <div v-if="assign.quiz_questions && assign.quiz_questions.length > 0">
+                         <div v-for="(question, index) in assign.quiz_questions" :key="index" class="question-block">
+                           <p class="q-title">{{ index + 1 }}. {{ question.question }}</p>
+                           <div class="radio-group">
+                             <label v-for="(val, key) in question.options" :key="key" class="radio-item">
+                               <input type="radio" :name="`q-${assign.id}-${index}`" :value="key" v-model="quizAnswers[index]" />
+                               <span class="opt-text">{{ key }}. {{ val }}</span>
+                             </label>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                     <div v-else>
+                       <textarea v-model="submissionContent" placeholder="在此输入作业内容..." rows="4"></textarea>
+                       <div class="form-group file-upload">
+                         <label>上传附件 (可选):</label>
+                         <input type="file" @change="handleSubmissionFileChange" />
+                       </div>
+                     </div>
+                     <button @click="handleSubmitAssignment(assign)" class="btn-confirm-submit" :disabled="isSubmitting">{{ isSubmitting ? '提交中...' : '确认提交' }}</button>
+                   </div>
+                 </div>
+               </div>
             </div>
 
             <div v-if="activeTab === 'comments'" class="tab-pane">
@@ -211,6 +565,13 @@ const parseAnswer = (jsonStr) => { /* ... */ }
         </div>
       </div>
     </div>
+
+    <!-- Toast 提示 -->
+    <Transition name="toast">
+      <div v-if="showToast" class="toast-notification">
+        {{ toastMessage }}
+      </div>
+    </Transition>
 
     <AITutor />
   </div>
@@ -311,9 +672,168 @@ const parseAnswer = (jsonStr) => { /* ... */ }
 .playing .status-icon { color: #4f46e5; }
 .item-title { font-size: 0.95rem; color: #334155; line-height: 1.4; }
 
+/* 新增样式 */
+
+/* 下一课提示覆盖层 */
+.next-lesson-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.3s;
+}
+
+.next-lesson-card {
+  background: white;
+  padding: 40px;
+  border-radius: 16px;
+  text-align: center;
+  max-width: 400px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+
+.next-lesson-card h3 {
+  margin: 0 0 15px 0;
+  font-size: 1.5rem;
+  color: #1f2937;
+}
+
+.next-lesson-card p {
+  color: #64748b;
+  margin-bottom: 20px;
+  font-size: 1rem;
+}
+
+.next-lesson-info {
+  background: #f8fafc;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 25px;
+  text-align: left;
+}
+
+.next-lesson-info strong {
+  color: #4f46e5;
+}
+
+.next-lesson-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.next-lesson-actions .btn-primary {
+  padding: 12px 24px;
+  background: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.next-lesson-actions .btn-primary:hover {
+  background: #4338ca;
+}
+
+.next-lesson-actions .btn-secondary {
+  padding: 12px 24px;
+  background: white;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.next-lesson-actions .btn-secondary:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+/* Toast 通知 */
+.toast-notification {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @media (max-width: 1200px) {
   .watch-container { flex-direction: column; height: auto; overflow: visible; }
   .playlist-sidebar { width: 100%; border-left: none; border-top: 1px solid #e5e7eb; height: auto; max-height: 500px; }
   .content-wrapper { padding: 20px; }
 }
+
+/* 作业模块样式 */
+.assignment-list { display: flex; flex-direction: column; gap: 15px; }
+.assignment-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; }
+.assign-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+.title-row { display: flex; align-items: center; gap: 10px; }
+.assign-header h3 { margin: 0; font-size: 1.1rem; color: #1f2937; }
+.type-tag { background: #e0e7ff; color: #4f46e5; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+.status-badge { font-size: 0.85rem; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
+.status-badge.pending { background: #f3f4f6; color: #6b7280; }
+.status-badge.passed { background: #d1fae5; color: #059669; }
+.status-badge.rejected { background: #fee2e2; color: #dc2626; }
+.assign-desc { color: #4b5563; margin-bottom: 10px; font-size: 0.95rem; line-height: 1.5; }
+.assign-date { color: #9ca3af; font-size: 0.85rem; }
+.attachment-link { margin-bottom: 15px; }
+.download-btn { color: #4f46e5; font-size: 0.9rem; cursor: pointer; text-decoration: none; }
+.download-btn:hover { text-decoration: underline; }
+.btn-submit-toggle { background: #4f46e5; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background 0.2s; }
+.btn-submit-toggle:hover { background: #4338ca; }
+.btn-retry { background: #f59e0b; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-top: 10px; cursor: pointer; font-weight: 500; }
+.btn-retry:hover { background: #d97706; }
+.submission-form { margin-top: 15px; padding: 15px; background: #f9fafb; border-radius: 6px; }
+.submission-form textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; margin-bottom: 10px; font-family: inherit; resize: vertical; }
+.submission-form textarea:focus { border-color: #4f46e5; outline: none; }
+.form-group.file-upload { margin-bottom: 10px; }
+.form-group.file-upload label { display: block; margin-bottom: 5px; color: #4b5563; font-size: 0.9rem; }
+.btn-confirm-submit { background: #10b981; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; transition: background 0.2s; }
+.btn-confirm-submit:hover { background: #059669; }
+.btn-confirm-submit:disabled { background: #9ca3af; cursor: not-allowed; }
+.choice-container { display: flex; flex-direction: column; gap: 20px; }
+.question-block { background: white; padding: 15px; border-radius: 6px; border: 1px solid #e5e7eb; }
+.q-title { font-weight: bold; margin-bottom: 10px; color: #1f2937; }
+.radio-group { display: flex; flex-direction: column; gap: 8px; }
+.radio-item { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 5px; border-radius: 4px; transition: background 0.2s; }
+.radio-item:hover { background: #f3f4f6; }
+.opt-text { color: #4b5563; }
+.submission-result { margin-top: 15px; }
+.result-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 6px; font-size: 0.95rem; color: #166534; }
+.result-box p { margin: 5px 0; }
+.result-box strong { color: #15803d; }
 </style>

@@ -50,6 +50,11 @@ export const useAuthStore = defineStore('auth', () => {
 
       await fetchUser()
 
+      // 触发每日登录积分
+      try {
+        await apiClient.post('/api/points/add_points/', { action: 'login' })
+      } catch (e) { }
+
       return { success: true, error: null }
 
     } catch (error) {

@@ -3,7 +3,8 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     CustomUser, Course, Module, Lesson, Enrollment,
-    Category, InstructorApplication, Comment, Note, Assignment, Submission, Message, Friendship
+    Category, InstructorApplication, Comment, Note, Assignment, Submission, Message, Friendship,
+    Banner, Announcement, VideoProgress, UserPoints, PointRecord, Badge, UserBadge
 )
 
 
@@ -69,7 +70,11 @@ class CourseAssignmentSerializer(serializers.ModelSerializer):
                         "options": q.get("options")
                     })
                 return safe_questions
-            except:
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+                # 记录错误但返回空列表，避免破坏整个响应
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"解析quiz_data失败 (Assignment ID: {obj.id}): {str(e)}")
                 return []
         return None
 
@@ -298,11 +303,20 @@ class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     receiver = UserSerializer(read_only=True)
     receiver_username = serializers.CharField(write_only=True)
+    attachment = serializers.FileField(required=False, allow_null=True)
 
     class Meta:
         model = Message
-        fields = ['id', 'sender', 'receiver', 'receiver_username', 'content', 'is_read', 'created_at']
+        fields = ['id', 'sender', 'receiver', 'receiver_username', 'content', 'attachment', 'is_read', 'created_at']
         read_only_fields = ['sender', 'receiver', 'is_read', 'created_at']
+
+    def validate(self, attrs):
+        # 确保至少有内容或附件
+        content = attrs.get('content', '').strip()
+        attachment = attrs.get('attachment')
+        if not content and not attachment:
+            raise serializers.ValidationError("请输入消息内容或上传附件")
+        return attrs
 
     def create(self, validated_data):
         receiver_username = validated_data.pop('receiver_username')
@@ -354,3 +368,59 @@ class FriendshipSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"to_username": "对方已经向你发送了申请，请去处理"})
 
         return Friendship.objects.create(from_user=from_user, to_user=to_user, status=Friendship.STATUS_PENDING)
+
+
+# --- 15. 轮播图序列化 ---
+class BannerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Banner
+        fields = ['id', 'title', 'image', 'link', 'order', 'is_active', 'created_at']
+
+
+# --- 16. 公告序列化 ---
+class AnnouncementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Announcement
+        fields = ['id', 'title', 'content', 'announce_type', 'is_active', 'is_pinned', 'created_at', 'updated_at']
+
+
+# --- 17. 视频进度序列化 ---
+class VideoProgressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VideoProgress
+        fields = ['id', 'lesson', 'last_position', 'duration', 'updated_at']
+        read_only_fields = ['updated_at']
+
+
+# --- 18. 用户积分序列化 ---
+class UserPointsSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = UserPoints
+        fields = ['id', 'username', 'total_points', 'level', 'continuous_days', 'last_active_date']
+
+
+# --- 19. 积分记录序列化 ---
+class PointRecordSerializer(serializers.ModelSerializer):
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    
+    class Meta:
+        model = PointRecord
+        fields = ['id', 'action', 'action_display', 'points', 'description', 'created_at']
+
+
+# --- 20. 勋章序列化 ---
+class BadgeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Badge
+        fields = ['id', 'name', 'icon', 'description', 'condition_type', 'condition_value', 'order']
+
+
+# --- 21. 用户勋章序列化 ---
+class UserBadgeSerializer(serializers.ModelSerializer):
+    badge = BadgeSerializer(read_only=True)
+    
+    class Meta:
+        model = UserBadge
+        fields = ['id', 'badge', 'earned_at']

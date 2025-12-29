@@ -28,12 +28,33 @@ const passwordMsg = ref({ type: '', text: '' })
 const isUpdatingProfile = ref(false)
 const isUpdatingPassword = ref(false)
 
-onMounted(() => {
+// 积分与勋章状态
+const pointsData = ref({
+  total_points: 0,
+  level: 1,
+  continuous_days: 0,
+  badges: []
+})
+const pointRecords = ref([])
+
+onMounted(async () => {
   if (authStore.user) {
     nickname.value = authStore.user.nickname || ''
     bio.value = authStore.user.bio || ''
   }
+  fetchPointsData()
 })
+
+const fetchPointsData = async () => {
+  try {
+    const [pointsRes, recordsRes] = await Promise.all([
+      apiClient.get('/api/points/my_points/'),
+      apiClient.get('/api/points/records/')
+    ])
+    pointsData.value = pointsRes.data
+    pointRecords.value = recordsRes.data.slice(0, 10)
+  } catch (e) { console.log('Points not available') }
+}
 
 const handleAvatarChange = (event) => {
   const file = event.target.files[0]
@@ -150,6 +171,13 @@ const currentAvatar = computed(() => {
           </button>
           <button
             class="menu-item"
+            :class="{ active: activeTab === 'points' }"
+            @click="activeTab = 'points'"
+          >
+            <span class="icon">🏆</span> 积分与勋章
+          </button>
+          <button
+            class="menu-item"
             :class="{ active: activeTab === 'security' }"
             @click="activeTab = 'security'"
           >
@@ -232,6 +260,93 @@ const currentAvatar = computed(() => {
               </button>
             </div>
           </form>
+        </div>
+
+        <!-- 积分与勋章 -->
+        <div v-if="activeTab === 'points'" class="content-panel fade-in">
+          <div class="panel-header">
+            <h2>积分与勋章</h2>
+            <p>查看您的学习成就</p>
+          </div>
+
+          <div class="points-overview">
+            <div class="points-card">
+              <div class="points-value">{{ pointsData.total_points }}</div>
+              <div class="points-label">总积分</div>
+            </div>
+            <div class="points-card level">
+              <div class="points-value">Lv.{{ pointsData.level }}</div>
+              <div class="points-label">当前等级</div>
+            </div>
+            <div class="points-card streak">
+              <div class="points-value">{{ pointsData.continuous_days }}</div>
+              <div class="points-label">连续学习天数</div>
+            </div>
+          </div>
+
+          <div class="badges-section">
+            <h3>🏅 我的勋章</h3>
+            <div v-if="pointsData.badges.length > 0" class="badges-grid">
+              <div v-for="ub in pointsData.badges" :key="ub.id" class="badge-item">
+                <span class="badge-icon">{{ ub.badge.icon }}</span>
+                <span class="badge-name">{{ ub.badge.name }}</span>
+              </div>
+            </div>
+            <div v-else class="empty-badges">
+              <p>🌟 还没有勋章，继续学习解锁吧！</p>
+            </div>
+          </div>
+
+          <div class="records-section">
+            <h3>📝 最近积分记录</h3>
+            <div v-if="pointRecords.length > 0" class="records-list">
+              <div v-for="rec in pointRecords" :key="rec.id" class="record-item">
+                <span class="record-action">{{ rec.action_display }}</span>
+                <span class="record-points">+{{ rec.points }}分</span>
+              </div>
+            </div>
+            <div v-else class="empty-records">
+              <p>暂无积分记录</p>
+            </div>
+          </div>
+
+          <!-- 积分规则 -->
+          <div class="rules-section">
+            <h3>📚 积分获取规则</h3>
+            <div class="rules-grid">
+              <div class="rule-item">
+                <span class="rule-icon">🎬</span>
+                <div class="rule-content">
+                  <span class="rule-name">观看视频</span>
+                  <span class="rule-points">+5 积分</span>
+                </div>
+              </div>
+              <div class="rule-item">
+                <span class="rule-icon">💬</span>
+                <div class="rule-content">
+                  <span class="rule-name">发表评论</span>
+                  <span class="rule-points">+3 积分</span>
+                </div>
+              </div>
+              <div class="rule-item">
+                <span class="rule-icon">📝</span>
+                <div class="rule-content">
+                  <span class="rule-name">提交作业</span>
+                  <span class="rule-points">+10 积分</span>
+                </div>
+              </div>
+              <div class="rule-item">
+                <span class="rule-icon">📅</span>
+                <div class="rule-content">
+                  <span class="rule-name">每日登录</span>
+                  <span class="rule-points">+2 积分</span>
+                </div>
+              </div>
+            </div>
+            <div class="level-info">
+              <p>💡 <strong>等级规则：</strong>每累计 100 积分升 1 级，连续学习可解锁特殊勋章！</p>
+            </div>
+          </div>
         </div>
 
       </main>
@@ -331,5 +446,181 @@ const currentAvatar = computed(() => {
 @media (max-width: 768px) {
   .settings-container { flex-direction: column; }
   .settings-sidebar { width: 100%; }
+}
+
+/* 积分与勋章样式 */
+.points-overview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.points-card {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: white;
+  padding: 25px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.points-card.level {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.points-card.streak {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.points-value {
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 5px;
+}
+
+.points-label {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.badges-section, .records-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.badges-section h3, .records-section h3 {
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+  color: #374151;
+}
+
+.badges-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.badge-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  padding: 10px 15px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.badge-icon {
+  font-size: 1.5rem;
+}
+
+.badge-name {
+  font-weight: 600;
+  color: #374151;
+}
+
+.empty-badges, .empty-records {
+  color: #9ca3af;
+  text-align: center;
+  padding: 20px;
+}
+
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.record-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 15px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.record-action {
+  color: #4b5563;
+}
+
+.record-points {
+  color: #10b981;
+  font-weight: 600;
+}
+
+/* 积分规则样式 */
+.rules-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.rules-section h3 {
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+  color: #374151;
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+}
+
+.rule-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 15px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.rule-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.rule-icon {
+  font-size: 1.5rem;
+}
+
+.rule-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rule-name {
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.rule-points {
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.level-info {
+  margin-top: 20px;
+  padding: 15px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 8px;
+  border: 1px solid #fcd34d;
+}
+
+.level-info p {
+  margin: 0;
+  color: #92400e;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 600px) {
+  .rules-grid { grid-template-columns: 1fr; }
 }
 </style>

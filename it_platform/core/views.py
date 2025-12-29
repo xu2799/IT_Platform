@@ -7,16 +7,20 @@ from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Count, Sum, F, Q
+from django.utils import timezone
 from .models import (
     Course, CustomUser, Module, Lesson, Enrollment,
-    Category, InstructorApplication, Comment, Note, Assignment, Submission, Message, Friendship
+    Category, InstructorApplication, Comment, Note, Assignment, Submission, Message, Friendship,
+    Banner, Announcement, VideoProgress, UserPoints, PointRecord, Badge, UserBadge
 )
 from .serializers import (
     CourseDetailSerializer, CourseListSerializer, UserSerializer,
     ModuleSerializer, LessonSerializer, CategorySerializer,
     InstructorApplicationSerializer, CommentSerializer,
     ChangePasswordSerializer, NoteSerializer, AssignmentSerializer, SubmissionSerializer,
-    AdminUserSerializer, MessageSerializer, FriendshipSerializer
+    AdminUserSerializer, MessageSerializer, FriendshipSerializer,
+    BannerSerializer, AnnouncementSerializer, VideoProgressSerializer,
+    UserPointsSerializer, PointRecordSerializer, BadgeSerializer, UserBadgeSerializer
 )
 from .tasks import process_video_upload
 
@@ -127,10 +131,23 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [permissions.AllowAny]
 
+    # 添加缓存 - 分类列表15分钟缓存
+    def list(self, request, *args, **kwargs):
+        from django.core.cache import cache
+        cache_key = 'categories_list'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data is not None:
+            return Response(cached_data)
+        
+        response = super().list(request, *args, **kwargs)
+        cache.set(cache_key, response.data, 60 * 15)  # 15分钟
+        return response
+
 
 # --- 3. 章节视图 ---
 class ModuleViewSet(viewsets.ModelViewSet):
-    queryset = Module.objects.all()
+    queryset = Module.objects.select_related('course').prefetch_related('lessons')
     serializer_class = ModuleSerializer
 
     def get_permissions(self):
@@ -141,7 +158,7 @@ class ModuleViewSet(viewsets.ModelViewSet):
 
 # --- 4. 课时视图 ---
 class LessonViewSet(viewsets.ModelViewSet):
-    queryset = Lesson.objects.all()
+    queryset = Lesson.objects.select_related('module__course')
     serializer_class = LessonSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -213,8 +230,8 @@ class InstructorCourseListView(ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.is_staff:
-            return Course.objects.all().order_by('-created_at')
-        return Course.objects.filter(instructor=user).order_by('-created_at')
+            return Course.objects.select_related('instructor', 'category').prefetch_related('likes').order_by('-created_at')
+        return Course.objects.filter(instructor=user).select_related('instructor', 'category').prefetch_related('likes').order_by('-created_at')
 
 
 # --- 7. 用户个人信息视图 ---
@@ -249,7 +266,6 @@ class ChangePasswordView(APIView):
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    pagination_class = None
     filter_backends = [filters.SearchFilter]
     search_fields = ['content', 'user__username', 'lesson__title']
 
@@ -271,6 +287,16 @@ class CommentViewSet(viewsets.ModelViewSet):
         lesson_id = self.request.query_params.get('lesson_id')
         if lesson_id:
             queryset = queryset.filter(lesson_id=lesson_id)
+
+        # 3. 支持按课程ID筛选
+        course_id = self.request.query_params.get('course_id')
+        if course_id:
+            queryset = queryset.filter(lesson__module__course_id=course_id)
+
+        # 4. 支持按分类筛选
+        category_slug = self.request.query_params.get('category')
+        if category_slug:
+            queryset = queryset.filter(lesson__module__course__category__slug=category_slug)
 
         return queryset
 
@@ -420,6 +446,12 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         course_id = self.request.query_params.get('course_id')
         if course_id:
             qs = qs.filter(course_id=course_id)
+        
+        # 支持按分类筛选
+        category_slug = self.request.query_params.get('category')
+        if category_slug:
+            qs = qs.filter(course__category__slug=category_slug)
+        
         return qs
 
 
@@ -440,6 +472,12 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         course_id = self.request.query_params.get('course_id')
         if course_id:
             qs = qs.filter(assignment__course_id=course_id)
+        
+        # 支持按分类筛选
+        category_slug = self.request.query_params.get('category')
+        if category_slug:
+            qs = qs.filter(assignment__course__category__slug=category_slug)
+        
         return qs
 
     def perform_create(self, serializer):
@@ -701,3 +739,183 @@ class FriendshipViewSet(viewsets.ModelViewSet):
         friendship.status = Friendship.STATUS_REJECTED
         friendship.save()
         return Response({"status": "rejected"})
+
+
+# --- 20. 轮播图管理 ---
+class BannerViewSet(viewsets.ModelViewSet):
+    queryset = Banner.objects.all()
+    serializer_class = BannerSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'active']:
+            return [permissions.AllowAny()]
+        return [IsAdminRole()]
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def active(self, request):
+        """获取所有启用的轮播图"""
+        banners = Banner.objects.filter(is_active=True)
+        serializer = self.get_serializer(banners, many=True)
+        return Response(serializer.data)
+
+
+# --- 21. 公告管理 ---
+class AnnouncementViewSet(viewsets.ModelViewSet):
+    queryset = Announcement.objects.all()
+    serializer_class = AnnouncementSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'active']:
+            return [permissions.AllowAny()]
+        return [IsAdminRole()]
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def active(self, request):
+        """获取所有启用的公告"""
+        announcements = Announcement.objects.filter(is_active=True)[:5]
+        serializer = self.get_serializer(announcements, many=True)
+        return Response(serializer.data)
+
+
+# --- 22. 视频播放进度 ---
+class VideoProgressViewSet(viewsets.ModelViewSet):
+    serializer_class = VideoProgressSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return VideoProgress.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        # 更新或创建进度
+        lesson = serializer.validated_data.get('lesson')
+        progress, created = VideoProgress.objects.update_or_create(
+            user=self.request.user,
+            lesson=lesson,
+            defaults={
+                'last_position': serializer.validated_data.get('last_position', 0),
+                'duration': serializer.validated_data.get('duration', 0)
+            }
+        )
+        return progress
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        progress = self.perform_create(serializer)
+        return Response(VideoProgressSerializer(progress).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def get_progress(self, request):
+        """获取指定课时的播放进度"""
+        lesson_id = request.query_params.get('lesson_id')
+        if not lesson_id:
+            return Response({"last_position": 0, "duration": 0})
+        try:
+            progress = VideoProgress.objects.get(user=request.user, lesson_id=lesson_id)
+            return Response({
+                "last_position": progress.last_position,
+                "duration": progress.duration
+            })
+        except VideoProgress.DoesNotExist:
+            return Response({"last_position": 0, "duration": 0})
+
+
+# --- 23. 用户积分系统 ---
+class PointsViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    def my_points(self, request):
+        """获取当前用户的积分信息"""
+        points, created = UserPoints.objects.get_or_create(user=request.user)
+        badges = UserBadge.objects.filter(user=request.user).select_related('badge')
+        return Response({
+            "total_points": points.total_points,
+            "level": points.level,
+            "continuous_days": points.continuous_days,
+            "badges": UserBadgeSerializer(badges, many=True).data
+        })
+
+    @action(detail=False, methods=['get'])
+    def records(self, request):
+        """获取积分变化记录"""
+        records = PointRecord.objects.filter(user=request.user)[:50]
+        return Response(PointRecordSerializer(records, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def add_points(self, request):
+        """添加积分(内部调用)"""
+        action_type = request.data.get('action')
+        if action_type not in ['watch', 'comment', 'submit', 'login']:
+            return Response({"detail": "无效的积分类型"}, status=400)
+
+        # 积分规则
+        points_map = {
+            'watch': 5,
+            'comment': 3,
+            'submit': 10,
+            'login': 2
+        }
+        points = points_map.get(action_type, 0)
+
+        # 更新用户积分
+        user_points, _ = UserPoints.objects.get_or_create(user=request.user)
+        user_points.total_points += points
+        user_points.level = 1 + user_points.total_points // 100  # 每100分升一级
+        
+        # 更新连续学习天数
+        today = timezone.now().date()
+        if user_points.last_active_date:
+            if user_points.last_active_date == today - timezone.timedelta(days=1):
+                user_points.continuous_days += 1
+            elif user_points.last_active_date != today:
+                user_points.continuous_days = 1
+        else:
+            user_points.continuous_days = 1
+        user_points.last_active_date = today
+        user_points.save()
+
+        # 记录积分变化
+        PointRecord.objects.create(
+            user=request.user,
+            action=action_type,
+            points=points,
+            description=f"获得{points}积分"
+        )
+
+        # 检查并解锁勋章
+        self._check_badges(request.user, user_points)
+
+        return Response({
+            "points_added": points,
+            "total_points": user_points.total_points,
+            "level": user_points.level
+        })
+
+    def _check_badges(self, user, user_points):
+        """检查并解锁勋章"""
+        badges = Badge.objects.all()
+        for badge in badges:
+            # 跳过已获得的勋章
+            if UserBadge.objects.filter(user=user, badge=badge).exists():
+                continue
+            
+            # 检查条件
+            unlocked = False
+            if badge.condition_type == 'points' and user_points.total_points >= badge.condition_value:
+                unlocked = True
+            elif badge.condition_type == 'continuous_days' and user_points.continuous_days >= badge.condition_value:
+                unlocked = True
+            elif badge.condition_type == 'level' and user_points.level >= badge.condition_value:
+                unlocked = True
+
+            if unlocked:
+                UserBadge.objects.create(user=user, badge=badge)
+
+
+# --- 24. 勋章管理 ---
+class BadgeViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Badge.objects.all()
+    serializer_class = BadgeSerializer
+    permission_classes = [permissions.AllowAny]

@@ -11,6 +11,8 @@ const activeContact = ref(null)
 const messages = ref([])
 const messageInput = ref('')
 const chatBodyRef = ref(null)
+const selectedFile = ref(null)
+const fileInputRef = ref(null)
 
 // 搜索与添加好友
 const searchQuery = ref('')
@@ -56,20 +58,47 @@ const selectContact = async (contact) => {
 
 // 3. 发送消息
 const sendMessage = async () => {
-  if (!messageInput.value.trim() || !activeContact.value) return
-  const content = messageInput.value
+  if (!messageInput.value.trim() && !selectedFile.value) return
+  if (!activeContact.value) return
+
+  const formData = new FormData()
+  formData.append('receiver_username', activeContact.value.username)
+  formData.append('content', messageInput.value || '')
+  if (selectedFile.value) {
+    formData.append('attachment', selectedFile.value)
+  }
+
   messageInput.value = ''
+  selectedFile.value = null
 
   try {
-    const res = await apiClient.post('/api/messages/', {
-      receiver_username: activeContact.value.username,
-      content: content
+    const res = await apiClient.post('/api/messages/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
     })
     messages.value.push(res.data)
     scrollToBottom()
   } catch (e) {
-    alert('发送失败: ' + (e.response?.data?.detail || '可能不是好友'))
+    alert('发送失败: ' + (e.response?.data?.detail || e.response?.data?.non_field_errors?.[0] || '可能不是好友'))
   }
+}
+
+// 文件选择
+const handleFileSelect = (event) => {
+  selectedFile.value = event.target.files ? event.target.files[0] : null
+}
+
+const triggerFileInput = () => {
+  if (fileInputRef.value) fileInputRef.value.click()
+}
+
+const clearFile = () => {
+  selectedFile.value = null
+  if (fileInputRef.value) fileInputRef.value.value = ''
+}
+
+const getFileName = (url) => {
+  if (!url) return ''
+  return decodeURIComponent(url.split('/').pop())
 }
 
 // 4. 搜索用户
@@ -168,13 +197,28 @@ onMounted(initData)
             </header>
             <div class="messages" ref="chatBodyRef">
                 <div v-for="msg in messages" :key="msg.id" class="msg-row" :class="{ mine: msg.sender.id === authStore.user.id }">
-                    <div class="bubble">{{ msg.content }}</div>
+                    <div class="bubble">
+                      <div v-if="msg.content">{{ msg.content }}</div>
+                      <div v-if="msg.attachment" class="attachment-box">
+                        <a :href="getFullMediaUrl(msg.attachment)" target="_blank" class="attachment-link">
+                          📎 {{ getFileName(msg.attachment) }}
+                        </a>
+                      </div>
+                    </div>
                 </div>
                 <div v-if="messages.length === 0" class="empty-chat">开始聊天吧</div>
             </div>
             <div class="input-area">
-                <input v-model="messageInput" @keyup.enter="sendMessage" placeholder="输入消息..." />
-                <button @click="sendMessage">发送</button>
+                <div class="input-row">
+                  <button @click="triggerFileInput" class="attach-btn" title="添加附件">📎</button>
+                  <input type="file" ref="fileInputRef" @change="handleFileSelect" style="display:none" />
+                  <input v-model="messageInput" @keyup.enter="sendMessage" placeholder="输入消息..." class="msg-input" />
+                  <button @click="sendMessage" class="send-btn">发送</button>
+                </div>
+                <div v-if="selectedFile" class="file-preview">
+                  <span>📄 {{ selectedFile.name }}</span>
+                  <button @click="clearFile" class="clear-btn">✕</button>
+                </div>
             </div>
         </div>
         <div v-else class="empty-state">
@@ -239,9 +283,19 @@ onMounted(initData)
 .msg-row.mine { justify-content: flex-end; }
 .bubble { padding: 8px 12px; background: white; border-radius: 8px; max-width: 70%; font-size: 0.95rem; }
 .mine .bubble { background: #95ec69; }
-.input-area { padding: 15px; background: white; border-top: 1px solid #eee; display: flex; gap: 10px; }
-.input-area input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-.input-area button { padding: 0 20px; background: #4f46e5; color: white; border: none; border-radius: 4px; cursor: pointer; }
+.input-area { padding: 15px; background: white; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 8px; }
+.input-row { display: flex; gap: 10px; align-items: center; }
+.msg-input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+.attach-btn { padding: 8px 12px; background: #f3f4f6; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 1.1rem; transition: background 0.2s; }
+.attach-btn:hover { background: #e5e7eb; }
+.send-btn { padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+.send-btn:hover { background: #4338ca; }
+.file-preview { display: flex; align-items: center; gap: 10px; background: #f0f9ff; padding: 8px 12px; border-radius: 4px; font-size: 0.9rem; color: #0369a1; }
+.file-preview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clear-btn { background: none; border: none; color: #dc2626; cursor: pointer; font-weight: bold; padding: 2px 6px; }
+.attachment-box { margin-top: 5px; }
+.attachment-link { color: #4f46e5; text-decoration: none; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; }
+.attachment-link:hover { text-decoration: underline; }
 .empty-state, .empty-chat { display: flex; align-items: center; justify-content: center; height: 100%; color: #ccc; }
 
 /* Modal */

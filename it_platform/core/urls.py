@@ -16,6 +16,12 @@ router.register(r'assignments', views.AssignmentViewSet, basename='assignment')
 router.register(r'submissions', views.SubmissionViewSet, basename='submission')
 router.register(r'messages', views.MessageViewSet, basename='message')
 router.register(r'friendships', views.FriendshipViewSet, basename='friendship')
+# 新增功能路由
+router.register(r'banners', views.BannerViewSet, basename='banner')
+router.register(r'announcements', views.AnnouncementViewSet, basename='announcement')
+router.register(r'video-progress', views.VideoProgressViewSet, basename='video-progress')
+router.register(r'points', views.PointsViewSet, basename='points')
+router.register(r'badges', views.BadgeViewSet, basename='badge')
 
 urlpatterns = [
     path('', include(router.urls)),

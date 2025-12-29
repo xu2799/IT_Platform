@@ -74,8 +74,8 @@ def process_video_upload(self, lesson_id, file_path):
             lesson = Lesson.objects.get(pk=lesson_id)
             lesson.content = f"视频处理失败: {error_msg}"
             lesson.save()
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"无法更新课时状态: {str(e)}")
         return {"status": "error", "message": error_msg}
     except Exception as e:
         error_msg = f"处理视频时发生未知错误: {str(e)}"
@@ -86,8 +86,8 @@ def process_video_upload(self, lesson_id, file_path):
             lesson = Lesson.objects.get(pk=lesson_id)
             lesson.content = f"视频处理失败，请重新上传。错误: {str(e)}"
             lesson.save()
-        except:
-            pass
+        except Exception as ex:
+            logger.warning(f"无法更新课时状态: {str(ex)}")
         
         # 如果重试次数未达到上限，则重试
         if self.request.retries < self.max_retries:

@@ -32,7 +32,7 @@ const handleLogout = () => {
           <i class="icon-verify"></i> 讲师申请
         </router-link>
         <router-link to="/admin/assignments" class="nav-item">
-          <i class="icon-task"></i> 作业监控
+          <i class="icon-task"></i> 作业管理
         </router-link>
       </nav>
       <div class="sidebar-footer">
@@ -44,7 +44,6 @@ const handleLogout = () => {
       <header class="admin-header">
         <span class="page-title">{{ $route.meta.title || '系统管理' }}</span>
         <div class="header-right">
-           <router-link to="/messages" class="msg-btn">💌 私信</router-link>
            <span class="admin-name">管理员: {{ authStore.user?.nickname || authStore.user?.username }}</span>
            <button @click="handleLogout" class="logout-btn">退出</button>
         </div>

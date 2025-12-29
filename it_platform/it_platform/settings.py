@@ -10,17 +10,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # ==============================================================================
-# 1. 核心安全设置 (本地开发配置)
+# 1. 核心安全设置
 # ==============================================================================
 
-# 【修改】硬编码密钥，避免环境变量读取失败导致报错
-SECRET_KEY = 'django-insecure-local-dev-key-for-testing-only'
-
-# 【修改】强制开启调试模式 (解决静态文件/媒体文件不显示的问题)
-DEBUG = True
-
-# 【修改】允许所有主机访问 (解决 127.0.0.1 或 localhost 报错)
-ALLOWED_HOSTS = ['*']
+try:
+    from decouple import config
+    # 使用环境变量，如果不存在则使用默认值
+    SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-local-dev-key-for-testing-only')
+    DEBUG = config('DEBUG', default=True, cast=bool)
+    ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
+except ImportError:
+    # 如果未安装 python-decouple，使用默认值（开发环境）
+    SECRET_KEY = 'django-insecure-local-dev-key-for-testing-only'
+    DEBUG = True
+    ALLOWED_HOSTS = ['*']
 
 
 # ==============================================================================
@@ -167,6 +170,15 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     # 异常处理
     'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
+    # 【新增】请求频率限制
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',   # 匿名用户每小时100次请求
+        'user': '1000/hour',  # 认证用户每小时1000次请求
+    }
 }
 
 
@@ -174,11 +186,43 @@ REST_FRAMEWORK = {
 # 10. Celery 异步任务配置
 # ==============================================================================
 
-CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
-CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+try:
+    from decouple import config
+    CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0')
+    CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/0')
+except ImportError:
+    CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
+    CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
+
+
+# ==============================================================================
+# 11. 缓存配置 (新增)
+# ==============================================================================
+
+# 使用内存缓存（不需要Redis），简化配置
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000
+        }
+    }
+}
+
+# 如果需要使用Redis缓存，请先确保Redis服务运行，然后使用以下配置：
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+#         'LOCATION': 'redis://127.0.0.1:6379/1',
+#         'KEY_PREFIX': 'it_platform',
+#         'TIMEOUT': 300,
+#     }
+# }
 
 
 # ==============================================================================
