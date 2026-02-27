@@ -107,6 +107,14 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
 
+    // 【新增】观看历史页面路由
+    {
+      path: '/watch-history',
+      name: 'watch-history',
+      component: () => import('@/views/WatchHistoryView.vue'),
+      meta: { requiresAuth: true }
+    },
+
     // --- Admin 路由 ---
     {
       path: '/admin',

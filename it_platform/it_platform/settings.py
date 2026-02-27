@@ -250,3 +250,6 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+
+# DeepSeek API 配置
+DEEPSEEK_API_KEY = config('DEEPSEEK_API_KEY', default='sk-0d474a00aef74264886a62bc10ecf100')

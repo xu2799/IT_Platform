@@ -255,9 +255,14 @@ class CommentSerializer(serializers.ModelSerializer):
 
 # --- 10. 笔记序列化 ---
 class NoteSerializer(serializers.ModelSerializer):
+    lesson_title = serializers.CharField(source='lesson.title', read_only=True)
+    course_id = serializers.IntegerField(source='lesson.module.course.id', read_only=True)
+    course_title = serializers.CharField(source='lesson.module.course.title', read_only=True)
+
     class Meta:
         model = Note
-        fields = ['id', 'user', 'lesson', 'content', 'video_timestamp', 'created_at']
+        fields = ['id', 'user', 'lesson', 'lesson_title', 'course_id', 'course_title',
+                  'content', 'video_timestamp', 'created_at']
         read_only_fields = ['user', 'created_at']
 
 
@@ -386,9 +391,15 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 
 # --- 17. 视频进度序列化 ---
 class VideoProgressSerializer(serializers.ModelSerializer):
+    lesson_title = serializers.CharField(source='lesson.title', read_only=True)
+    course_id = serializers.IntegerField(source='lesson.module.course.id', read_only=True)
+    course_title = serializers.CharField(source='lesson.module.course.title', read_only=True)
+    cover_image = serializers.ImageField(source='lesson.module.course.cover_image', read_only=True)
+
     class Meta:
         model = VideoProgress
-        fields = ['id', 'lesson', 'last_position', 'duration', 'updated_at']
+        fields = ['id', 'lesson', 'lesson_title', 'course_id', 'course_title',
+                  'cover_image', 'last_position', 'duration', 'updated_at']
         read_only_fields = ['updated_at']
 
 

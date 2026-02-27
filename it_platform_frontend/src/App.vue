@@ -64,7 +64,7 @@ const handleSearchSubmit = () => {
           <RouterLink :to="{ name: 'home' }"><span class="logo-text">IT 职业技能在线培训平台</span></RouterLink>
         </div>
         <nav class="navbar-main">
-          <RouterLink :to="{ name: 'about' }" class="nav-link">关于我们</RouterLink>
+          <RouterLink :to="{ name: 'about' }" class="nav-link" target="_blank">关于我们</RouterLink>
         </nav>
       </div>
 
@@ -83,11 +83,11 @@ const handleSearchSubmit = () => {
           </template>
 
           <template v-else>
-            <RouterLink to="/messages" class="nav-btn message" title="我的私信">
+            <RouterLink to="/messages" class="nav-btn message" title="我的私信" target="_blank">
               💌 私信
             </RouterLink>
 
-            <RouterLink v-if="['instructor', 'admin'].includes(authStore.user?.role)" to="/create-course" class="nav-btn success">+ 创建课程</RouterLink>
+            <RouterLink v-if="['instructor', 'admin'].includes(authStore.user?.role)" to="/create-course" class="nav-btn success" target="_blank">+ 创建课程</RouterLink>
 
             <div class="dropdown-wrapper">
               <a class="nav-link user-trigger">
@@ -96,14 +96,15 @@ const handleSearchSubmit = () => {
               </a>
 
               <div class="dropdown-menu right">
-                <RouterLink :to="{ name: 'profile' }" class="dropdown-item">个人资料</RouterLink>
-                <RouterLink :to="{ name: 'favorites' }" class="dropdown-item">我的收藏</RouterLink>
+                <RouterLink :to="{ name: 'profile' }" class="dropdown-item" target="_blank">个人资料</RouterLink>
+                <RouterLink :to="{ name: 'favorites' }" class="dropdown-item" target="_blank">我的收藏</RouterLink>
+                <RouterLink :to="{ name: 'watch-history' }" class="dropdown-item" target="_blank">观看历史</RouterLink>
                 <div class="divider"></div>
 
-                <RouterLink v-if="['instructor', 'admin'].includes(authStore.user?.role)" :to="{ name: 'instructor-dashboard' }" class="dropdown-item">讲师面板</RouterLink>
-                <RouterLink v-if="authStore.user?.role === 'student'" :to="{ name: 'become-instructor' }" class="dropdown-item">成为讲师</RouterLink>
+                <RouterLink v-if="['instructor', 'admin'].includes(authStore.user?.role)" :to="{ name: 'instructor-dashboard' }" class="dropdown-item" target="_blank">讲师面板</RouterLink>
+                <RouterLink v-if="authStore.user?.role === 'student'" :to="{ name: 'become-instructor' }" class="dropdown-item" target="_blank">成为讲师</RouterLink>
 
-                <RouterLink v-if="authStore.user?.role === 'admin'" :to="{ name: 'admin-dashboard' }" class="dropdown-item">后台管理</RouterLink>
+                <RouterLink v-if="authStore.user?.role === 'admin'" :to="{ name: 'admin-dashboard' }" class="dropdown-item" target="_blank">后台管理</RouterLink>
 
                 <div class="divider"></div>
                 <a @click="handleLogout" class="dropdown-item danger">退出登录</a>
@@ -115,7 +116,7 @@ const handleSearchSubmit = () => {
     </header>
 
     <main class="app-main" :class="{ 'no-header': !shouldShowHeader }">
-      <RouterView />
+      <RouterView :key="route.fullPath" />
     </main>
   </div>
 </template>

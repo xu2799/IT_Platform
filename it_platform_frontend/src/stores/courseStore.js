@@ -41,10 +41,11 @@ export const useCourseStore = defineStore('courses', () => {
   }
 
   // 3. 获取课程详情
-  async function fetchCourseDetail(courseId) {
+  async function fetchCourseDetail(courseId, forceRefresh = false) {
     const existingCourse = courses.value.find(c => c.id == courseId)
 
-    if (!isStale.value && existingCourse?.modules && existingCourse.is_liked !== undefined) {
+    // 如果不是强制刷新，且数据未过期，且已有完整数据，则直接返回缓存
+    if (!forceRefresh && !isStale.value && existingCourse?.modules && existingCourse.is_liked !== undefined) {
       return existingCourse
     }
 

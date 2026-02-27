@@ -37,6 +37,10 @@ const pointsData = ref({
 })
 const pointRecords = ref([])
 
+// 观看历史状态
+const watchHistory = ref([])
+const isLoadingHistory = ref(false)
+
 onMounted(async () => {
   if (authStore.user) {
     nickname.value = authStore.user.nickname || ''
@@ -54,6 +58,33 @@ const fetchPointsData = async () => {
     pointsData.value = pointsRes.data
     pointRecords.value = recordsRes.data.slice(0, 10)
   } catch (e) { console.log('Points not available') }
+}
+
+const fetchWatchHistory = async () => {
+  isLoadingHistory.value = true
+  try {
+    const res = await apiClient.get('/api/video-progress/history/')
+    watchHistory.value = res.data
+  } catch (e) { console.log('History not available') }
+  finally { isLoadingHistory.value = false }
+}
+
+const formatDuration = (seconds) => {
+  if (!seconds) return '0:00'
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+const formatProgress = (pos, dur) => {
+  if (!dur) return 0
+  return Math.min(100, Math.round((pos / dur) * 100))
+}
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 const handleAvatarChange = (event) => {
@@ -182,6 +213,13 @@ const currentAvatar = computed(() => {
             @click="activeTab = 'security'"
           >
             <span class="icon">🛡️</span> 安全设置
+          </button>
+          <button
+            class="menu-item"
+            :class="{ active: activeTab === 'history' }"
+            @click="activeTab = 'history'; fetchWatchHistory()"
+          >
+            <span class="icon">📺</span> 观看历史
           </button>
         </nav>
       </aside>
@@ -346,6 +384,51 @@ const currentAvatar = computed(() => {
             <div class="level-info">
               <p>💡 <strong>等级规则：</strong>每累计 100 积分升 1 级，连续学习可解锁特殊勋章！</p>
             </div>
+          </div>
+        </div>
+
+        <!-- 观看历史 -->
+        <div v-if="activeTab === 'history'" class="content-panel fade-in">
+          <div class="panel-header">
+            <h2>观看历史</h2>
+            <p>继续您上次的学习进度</p>
+          </div>
+
+          <div v-if="isLoadingHistory" class="loading-state">
+            加载中...
+          </div>
+
+          <div v-else-if="watchHistory.length === 0" class="empty-state">
+            <p>📺 暂无播放记录</p>
+            <p class="sub">开始观看课程后，这里会显示您的观看历史</p>
+          </div>
+
+          <div v-else class="history-list">
+            <router-link 
+              v-for="item in watchHistory" 
+              :key="item.id" 
+              :to="{ name: 'lesson-watch', params: { courseId: item.course_id, lessonId: item.lesson } }"
+              class="history-item"
+            >
+              <div class="history-cover">
+                <img v-if="item.cover_image" :src="getFullMediaUrl(item.cover_image)" alt="Cover">
+                <div v-else class="cover-placeholder">📹</div>
+                <div class="progress-bar">
+                  <div class="progress-fill" :style="{ width: formatProgress(item.last_position, item.duration) + '%' }"></div>
+                </div>
+              </div>
+              <div class="history-info">
+                <h4 class="course-title">{{ item.course_title }}</h4>
+                <p class="lesson-title">{{ item.lesson_title }}</p>
+                <div class="history-meta">
+                  <span class="time-info">▶ {{ formatDuration(item.last_position) }} / {{ formatDuration(item.duration) }}</span>
+                  <span class="date-info">{{ formatDate(item.updated_at) }}</span>
+                </div>
+              </div>
+              <div class="play-btn">
+                ▶ 继续
+              </div>
+            </router-link>
           </div>
         </div>
 
@@ -623,4 +706,56 @@ const currentAvatar = computed(() => {
 @media (max-width: 600px) {
   .rules-grid { grid-template-columns: 1fr; }
 }
+
+/* 观看历史样式 */
+.loading-state, .empty-state { text-align: center; padding: 40px; color: #9ca3af; }
+.empty-state .sub { font-size: 0.85rem; margin-top: 8px; }
+
+.history-list { display: flex; flex-direction: column; gap: 15px; }
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.history-item:hover { background: #f1f5f9; border-color: #c7d2fe; transform: translateX(5px); }
+
+.history-cover {
+  position: relative;
+  width: 120px;
+  height: 68px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #e5e7eb;
+}
+.history-cover img { width: 100%; height: 100%; object-fit: cover; }
+.cover-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+
+.progress-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(0,0,0,0.3); }
+.progress-fill { height: 100%; background: #10b981; transition: width 0.3s; }
+
+.history-info { flex: 1; min-width: 0; }
+.course-title { margin: 0 0 4px 0; font-size: 1rem; color: #1f2937; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lesson-title { margin: 0 0 8px 0; font-size: 0.9rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-meta { display: flex; gap: 15px; font-size: 0.8rem; color: #9ca3af; }
+.time-info { color: #10b981; font-weight: 500; }
+
+.play-btn {
+  padding: 10px 18px;
+  background: #4f46e5;
+  color: white;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.history-item:hover .play-btn { background: #4338ca; }
 </style>

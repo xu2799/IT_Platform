@@ -8,6 +8,7 @@ import CommentItem from '@/components/CommentItem.vue'
 import VideoNotes from '@/components/VideoNotes.vue'
 import CodeSandbox from '@/components/CodeSandbox.vue'
 import AITutor from '@/components/AITutor.vue'
+import CustomVideoPlayer from '@/components/CustomVideoPlayer.vue'
 
 const courseStore = useCourseStore()
 const authStore = useAuthStore()
@@ -49,6 +50,9 @@ let countdownTimer = null
 // Toast提示
 const toastMessage = ref('')
 const showToast = ref(false)
+
+// 笔记模式
+const notesMode = ref('lesson') // 'lesson' = 本课笔记, 'global' = 全部笔记
 
 // --- 3. 获取课程与课时数据 ---
 const course = computed(() => courseStore.courses.find(c => c.id == props.courseId) || null)
@@ -96,7 +100,14 @@ const videoUrl = computed(() => {
 let progressSaveInterval = null
 
 onMounted(async () => {
-  try { await courseStore.fetchCourseDetail(props.courseId) } catch (e) {}
+  // 强制刷新获取课程详情，确保数据最新
+  try { 
+    await courseStore.fetchCourseDetail(props.courseId, true) 
+  } catch (e) {
+    console.error('获取课程详情失败:', e)
+  }
+  
+  // 获取评论
   fetchComments(props.lessonId)
   
   // 加载上次播放进度
@@ -122,19 +133,40 @@ onUnmounted(() => {
 // 加载视频播放进度
 const loadVideoProgress = async () => {
   if (!authStore.isAuthenticated) return
-  try {
-    const res = await apiClient.get('/api/video-progress/get_progress/', {
-      params: { lesson_id: props.lessonId }
-    })
-    if (res.data.last_position > 0 && videoPlayer.value) {
-      // 等待视频加载后跳转
-      videoPlayer.value.addEventListener('loadedmetadata', () => {
-        if (res.data.last_position < videoPlayer.value.duration - 5) {
-          videoPlayer.value.currentTime = res.data.last_position
-        }
-      }, { once: true })
+  
+  // 优先使用 URL query 参数中的时间点
+  const queryTime = route.query.t ? parseInt(route.query.t) : null
+  
+  let targetPosition = queryTime
+  
+  // 如果没有 query 参数，尝试从 API 获取
+  if (!targetPosition) {
+    try {
+      const res = await apiClient.get('/api/video-progress/get_progress/', {
+        params: { lesson_id: props.lessonId }
+      })
+      if (res.data.last_position > 0) {
+        targetPosition = res.data.last_position
+      }
+    } catch (e) { console.log('No saved progress') }
+  }
+  
+  // 如果有目标时间点，等待播放器加载后跳转
+  if (targetPosition && targetPosition > 0) {
+    // 使用 MutationObserver 或轮询等待 CustomVideoPlayer 组件准备好
+    const trySeek = () => {
+      if (videoPlayer.value && typeof videoPlayer.value.seekTo === 'function') {
+        // 使用 CustomVideoPlayer 的 seekTo 方法
+        setTimeout(() => {
+          videoPlayer.value.seekTo(targetPosition)
+        }, 500)  // 给视频一点加载时间
+      } else {
+        // 如果组件还没准备好，稍后重试
+        setTimeout(trySeek, 100)
+      }
     }
-  } catch (e) { console.log('No saved progress') }
+    trySeek()
+  }
 }
 
 // 保存视频播放进度
@@ -150,9 +182,14 @@ const saveVideoProgress = async () => {
   } catch (e) {}
 }
 
-// 视频时间更新
+// 视频时间更新 (原生 video)
 const handleTimeUpdate = (e) => {
   currentTime.value = e.target.currentTime
+}
+
+// 自定义播放器时间更新
+const handleCustomTimeUpdate = (data) => {
+  currentTime.value = data.currentTime
 }
 
 // 新增：视频结束处理
@@ -197,47 +234,29 @@ const handleKeyPress = (e) => {
   // 如果在输入框中，不响应快捷键
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
   
-  const video = videoPlayer.value
+  // CustomVideoPlayer 组件内部已处理键盘事件，这里只显示 toast 提示
+  const video = videoPlayer.value?.videoRef
   if (!video) return
   
   switch(e.code) {
     case 'Space':
-      e.preventDefault()
-      video.paused ? video.play() : video.pause()
-      displayToast(video.paused ? '⏸ 已暂停' : '▶ 播放中')
+      // 播放/暂停由组件处理，这里只显示提示
+      setTimeout(() => displayToast(video.paused ? '⏸ 已暂停' : '▶ 播放中'), 50)
       break
     case 'ArrowRight':
-      e.preventDefault()
-      video.currentTime = Math.min(video.duration, video.currentTime + 10)
-      displayToast('⏩ 快进 10 秒')
+      displayToast('⏩ 快进 5 秒')
       break
     case 'ArrowLeft':
-      e.preventDefault()
-      video.currentTime = Math.max(0, video.currentTime - 10)
-      displayToast('⏪ 后退 10 秒')
+      displayToast('⏪ 后退 5 秒')
       break
     case 'ArrowUp':
-      e.preventDefault()
-      video.volume = Math.min(1, video.volume + 0.1)
-      displayToast(`🔊 音量: ${Math.round(video.volume * 100)}%`)
+      setTimeout(() => displayToast(`🔊 音量: ${Math.round(video.volume * 100)}%`), 50)
       break
     case 'ArrowDown':
-      e.preventDefault()
-      video.volume = Math.max(0, video.volume - 0.1)
-      displayToast(`🔉 音量: ${Math.round(video.volume * 100)}%`)
-      break
-    case 'KeyF':
-      e.preventDefault()
-      if (document.fullscreenElement) {
-        document.exitFullscreen()
-      } else {
-        video.requestFullscreen()
-      }
+      setTimeout(() => displayToast(`🔉 音量: ${Math.round(video.volume * 100)}%`), 50)
       break
     case 'KeyM':
-      e.preventDefault()
-      video.muted = !video.muted
-      displayToast(video.muted ? '🔇 已静音' : '🔊 取消静音')
+      setTimeout(() => displayToast(video.muted ? '🔇 已静音' : '🔊 取消静音'), 50)
       break
   }
 }
@@ -251,10 +270,9 @@ const displayToast = (message) => {
   }, 2000)
 }
 
-const handleSeek = (time) => { if (videoPlayer.value) { videoPlayer.value.currentTime = time; videoPlayer.value.play() } }
+const handleSeek = (time) => { if (videoPlayer.value?.seekTo) { videoPlayer.value.seekTo(time) } }
 
-watch(videoUrl, (newUrl) => { if (newUrl && videoPlayer.value) videoPlayer.value.load() })
-watch(() => props.lessonId, (newId) => { if (newId) fetchComments(newId) })
+// videoUrl 变化由 CustomVideoPlayer 组件内部处理
 
 // --- 6. 评论功能 ---
 const fetchComments = async (id) => {
@@ -288,6 +306,30 @@ const goBack = () => {
   } else {
     router.push({ name: 'course-detail', params: { id: props.courseId } })
   }
+}
+
+// 处理笔记导航（全局模式下点击笔记跳转）
+const handleNoteNavigate = ({ lessonId, timestamp }) => {
+  if (lessonId != props.lessonId) {
+    router.push({
+      name: 'lesson-watch',
+      params: { courseId: props.courseId, lessonId: lessonId }
+    })
+  }
+  // 如果是当前课时，直接跳转时间
+  if (timestamp && videoPlayer.value?.seekTo) {
+    videoPlayer.value.seekTo(timestamp)
+  }
+}
+
+// 打开课时（当前课时不跳转，其他在新窗口打开）
+const openLesson = (lessonId) => {
+  if (lessonId == props.lessonId) return // 当前课时不操作
+  const url = router.resolve({
+    name: 'lesson-watch',
+    params: { courseId: props.courseId, lessonId: lessonId }
+  }).href
+  window.open(url, '_blank')
 }
 
 // --- 作业与下载功能 ---
@@ -416,16 +458,13 @@ const parseAnswer = (jsonStr) => {
 
         <div class="video-stage">
           <div v-if="videoUrl" class="video-wrapper">
-            <video 
+            <CustomVideoPlayer 
               ref="videoPlayer" 
               :src="videoUrl" 
-              controls 
-              autoplay 
-              playsinline 
-              class="html5-player" 
-              @timeupdate="handleTimeUpdate"
+              :autoplay="true"
+              @timeupdate="handleCustomTimeUpdate"
               @ended="handleVideoEnded"
-            ></video>
+            />
             
             <!-- 下一课提示 -->
             <div v-if="showNextLessonPrompt" class="next-lesson-overlay">
@@ -537,7 +576,18 @@ const parseAnswer = (jsonStr) => {
             </div>
 
             <div v-if="activeTab === 'notes'" class="tab-pane full-height">
-              <VideoNotes :lesson-id="props.lessonId" :current-time="currentTime" @seek="handleSeek" />
+              <div class="notes-mode-switch">
+                <button :class="{ active: notesMode === 'lesson' }" @click="notesMode = 'lesson'">📝 本课笔记</button>
+                <button :class="{ active: notesMode === 'global' }" @click="notesMode = 'global'">📚 全部笔记</button>
+              </div>
+              <VideoNotes 
+                :lesson-id="notesMode === 'lesson' ? props.lessonId : null" 
+                :course-id="notesMode === 'global' ? props.courseId : null"
+                :current-time="currentTime" 
+                :global-mode="notesMode === 'global'"
+                @seek="handleSeek" 
+                @navigate="handleNoteNavigate"
+              />
             </div>
 
             <div v-if="activeTab === 'code'" class="tab-pane full-height">
@@ -670,7 +720,9 @@ const parseAnswer = (jsonStr) => {
 .playlist-item.playing .item-title { color: #4f46e5; font-weight: 600; }
 .status-icon { font-size: 0.8rem; color: #94a3b8; width: 15px; text-align: center; }
 .playing .status-icon { color: #4f46e5; }
-.item-title { font-size: 0.95rem; color: #334155; line-height: 1.4; }
+.item-title { font-size: 0.95rem; color: #334155; line-height: 1.4; flex: 1; }
+.new-window-icon { font-size: 0.75rem; color: #94a3b8; opacity: 0; transition: opacity 0.2s; }
+.playlist-item:hover .new-window-icon { opacity: 1; }
 
 /* 新增样式 */
 
@@ -836,4 +888,10 @@ const parseAnswer = (jsonStr) => {
 .result-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 6px; font-size: 0.95rem; color: #166534; }
 .result-box p { margin: 5px 0; }
 .result-box strong { color: #15803d; }
+
+/* 笔记模式切换 */
+.notes-mode-switch { display: flex; gap: 10px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #e5e7eb; }
+.notes-mode-switch button { padding: 8px 16px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px; color: #4b5563; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s; }
+.notes-mode-switch button:hover { background: #e5e7eb; }
+.notes-mode-switch button.active { background: #4f46e5; color: white; border-color: #4f46e5; }
 </style>

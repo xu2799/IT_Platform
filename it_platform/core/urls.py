@@ -25,7 +25,7 @@ router.register(r'badges', views.BadgeViewSet, basename='badge')
 
 urlpatterns = [
     path('', include(router.urls)),
-
+    path('ai/ask/', views.AskAIView.as_view(), name='ai-ask'),
     path('users/me/', views.UserView.as_view(), name='user-me'),
     path('users/change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('users/search/', UserSearchView.as_view(), name='user-search'),

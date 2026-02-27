@@ -1,4 +1,6 @@
 import json
+import openai
+from django.conf import settings
 from rest_framework import viewsets, permissions, status, filters, generics
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -419,10 +421,20 @@ class NoteViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Note.objects.filter(user=self.request.user).order_by('-created_at')
+        queryset = Note.objects.filter(user=self.request.user).select_related(
+            'lesson__module__course'
+        ).order_by('-created_at')
+
+        # 按课时过滤
         lesson_id = self.request.query_params.get('lesson_id')
         if lesson_id:
             queryset = queryset.filter(lesson_id=lesson_id)
+
+        # 按课程过滤（新增）
+        course_id = self.request.query_params.get('course_id')
+        if course_id:
+            queryset = queryset.filter(lesson__module__course_id=course_id)
+
         return queryset
 
     def perform_create(self, serializer):
@@ -820,6 +832,28 @@ class VideoProgressViewSet(viewsets.ModelViewSet):
         except VideoProgress.DoesNotExist:
             return Response({"last_position": 0, "duration": 0})
 
+    @action(detail=False, methods=['get'])
+    def history(self, request):
+        """获取用户播放历史（每个课程只显示最后一次）"""
+        # 获取所有记录，按时间倒序
+        all_records = VideoProgress.objects.filter(user=request.user).select_related(
+            'lesson__module__course'
+        ).order_by('-updated_at')
+        
+        # 按课程去重，只保留每个课程最后一次播放
+        seen_courses = set()
+        unique_history = []
+        for record in all_records:
+            course_id = record.lesson.module.course.id
+            if course_id not in seen_courses:
+                seen_courses.add(course_id)
+                unique_history.append(record)
+                if len(unique_history) >= 20:
+                    break
+        
+        serializer = self.get_serializer(unique_history, many=True)
+        return Response(serializer.data)
+
 
 # --- 23. 用户积分系统 ---
 class PointsViewSet(viewsets.ViewSet):
@@ -919,3 +953,37 @@ class BadgeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Badge.objects.all()
     serializer_class = BadgeSerializer
     permission_classes = [permissions.AllowAny]
+
+# --- 25. AI 智能助教接口 ---
+class AskAIView(APIView):
+    permission_classes = [permissions.IsAuthenticated] # 仅登录用户可用，防止 API 被刷
+
+    def post(self, request):
+        question = request.data.get('question')
+        if not question:
+            return Response({"detail": "请输入问题"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 获取 API Key（稍后我们在 settings 里配置）
+        api_key = getattr(settings, 'DEEPSEEK_API_KEY', None)
+        if not api_key:
+            return Response({"answer": "后端未配置 API Key，请检查 settings.py"}, status=200)
+
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com"
+        )
+
+        try:
+            # 调用 DeepSeek API
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "你是一个专业的IT学习助教，负责回答学生关于编程、课程和IT技术的问题。"},
+                    {"role": "user", "content": question},
+                ],
+                stream=False
+            )
+            answer = response.choices[0].message.content
+            return Response({"answer": answer})
+        except Exception as e:
+            return Response({"answer": f"AI 连接失败: {str(e)}"}, status=200)
